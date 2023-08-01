@@ -9,6 +9,7 @@ import {ERC1155Pausable} from '@openzeppelin/contracts/token/ERC1155/extensions/
 import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
 
 import {IRewardRecipient} from '../interfaces/IRewardRecipient.sol';
+import {IUniswapV2Router02} from '../interfaces/IUniswapV2Router02.sol';
 import {IERC20MintableBurnable} from '../interfaces/IERC20MintableBurnable.sol';
 
 error INVALID_ADDRESS();
@@ -31,8 +32,11 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     /// @notice TRIREME
     IERC20MintableBurnable public immutable TRIREME;
 
-    /// @notice USDC
+    /// @notice Fee Token (USDC)
     IERC20 public immutable USDC;
+
+    /// @notice Uniswap Router
+    IUniswapV2Router02 public immutable ROUTER;
 
     /// @notice price per guardian
     uint256 public immutable pricePerGuardian;
@@ -82,10 +86,13 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     /* ======== INITIALIZATION ======== */
 
     constructor(
-        IERC20MintableBurnable trireme
+        IERC20MintableBurnable trireme,
+        IERC20 usdc,
+        IUniswapV2Router02 router
     ) ERC1155('https://trireme.co/guardian') {
         TRIREME = trireme;
-        USDC = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); // Ethereum mainnet
+        USDC = usdc;
+        ROUTER = router;
 
         // 1 Guardian: Craftsman
         // 5 Guardian: Scribe
@@ -317,11 +324,22 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         emit Claim(account, reward, dividends);
     }
 
-    function receiveReward(uint256 amount) external override {
-        USDC.transferFrom(_msgSender(), address(this), amount);
+    function receiveReward() external payable override {
+        if (msg.value == 0) return;
 
-        if (totalSupply > 0) {
-            dividendsPerShare += (amount * MULTIPLIER) / totalSupply;
+        address[] memory path = new address[](2);
+        path[0] = ROUTER.WETH();
+        path[1] = address(USDC);
+
+        uint256 balanceBefore = USDC.balanceOf(address(this));
+        ROUTER.swapExactETHForTokensSupportingFeeOnTransferTokens{
+            value: msg.value
+        }(0, path, address(this), block.timestamp);
+
+        uint256 rewardAmount = USDC.balanceOf(address(this)) - balanceBefore;
+
+        if (totalSupply > 0 && rewardAmount > 0) {
+            dividendsPerShare += (rewardAmount * MULTIPLIER) / totalSupply;
         }
     }
 

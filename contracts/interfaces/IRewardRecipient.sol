@@ -3,5 +3,5 @@
 pragma solidity 0.8.17;
 
 interface IRewardRecipient {
-    function receiveReward(uint256 amount) external;
+    function receiveReward() external payable;
 }
