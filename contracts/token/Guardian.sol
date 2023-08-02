@@ -4,9 +4,11 @@ pragma solidity 0.8.17;
 
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import {IERC20Metadata} from '@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol';
 import {ERC1155} from '@openzeppelin/contracts/token/ERC1155/ERC1155.sol';
 import {ERC1155Pausable} from '@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Pausable.sol';
 import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
+import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 
 import {IRewardRecipient} from '../interfaces/IRewardRecipient.sol';
 import {IUniswapV2Router02} from '../interfaces/IUniswapV2Router02.sol';
@@ -14,9 +16,11 @@ import {IERC20MintableBurnable} from '../interfaces/IERC20MintableBurnable.sol';
 
 error INVALID_ADDRESS();
 error INVALID_AMOUNT();
+error INVALID_FEE_TOKEN();
 
 contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     using SafeERC20 for IERC20;
+    using EnumerableSet for EnumerableSet.AddressSet;
 
     /* ======== STORAGE ======== */
     struct RewardRate {
@@ -41,6 +45,12 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     /// @notice price per guardian
     uint256 public immutable pricePerGuardian;
 
+    /// @notice treasury wallet
+    address public treasury;
+
+    /// @notice txn fee (15$ = 15 ether)
+    uint256 public fee;
+
     /// @notice mint limit in one txn
     uint256 public mintLimit;
 
@@ -52,6 +62,9 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
 
     /// @notice reward rate
     RewardRate public rewardRate;
+
+    /// @dev feeToken tokens (stable coin for txn fee payment)
+    EnumerableSet.AddressSet private feeTokens;
 
     /// @dev TYPE
     uint8 private constant TYPE = 6;
@@ -80,6 +93,8 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     /* ======== EVENTS ======== */
 
     event MintLimit(uint256 oldLimit, uint256 newLimit);
+    event Treasury(address oldTreasury, address newTreasury);
+    event Fee(uint256 oldFee, uint256 newFee);
     event Mint(address indexed from, address indexed to, uint256 amount);
     event Claim(address indexed from, uint256 reward, uint256 dividends);
 
@@ -88,11 +103,19 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     constructor(
         IERC20MintableBurnable trireme,
         IERC20 usdc,
-        IUniswapV2Router02 router
+        IUniswapV2Router02 router,
+        address treasury_,
+        uint256 fee_
     ) ERC1155('https://trireme.co/guardian') {
         TRIREME = trireme;
         USDC = usdc;
         ROUTER = router;
+
+        if (treasury_ == address(0)) revert INVALID_ADDRESS();
+        if (fee_ == 0) revert INVALID_AMOUNT();
+        treasury = treasury_;
+        fee = fee_;
+        feeTokens.add(address(usdc));
 
         // 1 Guardian: Craftsman
         // 5 Guardian: Scribe
@@ -135,6 +158,46 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         mintLimit = limit;
 
         emit MintLimit(old, limit);
+    }
+
+    function setTreasury(address treasury_) external onlyOwner {
+        if (treasury_ == address(0)) revert INVALID_ADDRESS();
+
+        address old = treasury;
+        treasury = treasury_;
+
+        emit Treasury(old, treasury_);
+    }
+
+    function setFee(uint256 fee_) external onlyOwner {
+        if (fee_ == 0) revert INVALID_AMOUNT();
+
+        uint256 old = fee;
+        fee = fee_;
+
+        emit Fee(old, fee_);
+    }
+
+    function addFeeTokens(address[] calldata tokens) external onlyOwner {
+        uint256 length = tokens.length;
+
+        for (uint256 i = 0; i < length; ) {
+            feeTokens.add(tokens[i]);
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function removeFeeTokens(address[] calldata tokens) external onlyOwner {
+        uint256 length = tokens.length;
+
+        for (uint256 i = 0; i < length; ) {
+            feeTokens.remove(tokens[i]);
+            unchecked {
+                ++i;
+            }
+        }
     }
 
     function pause() external onlyOwner {
@@ -250,9 +313,21 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
 
     /* ======== PUBLIC FUNCTIONS ======== */
 
-    function stake(address to, uint256 amount) external update {
+    function stake(
+        address to,
+        address feeToken,
+        uint256 amount
+    ) external update {
         if (to == address(0)) revert INVALID_ADDRESS();
         if (amount == 0 || amount > mintLimit) revert INVALID_AMOUNT();
+        if (!feeTokens.contains(feeToken)) revert INVALID_FEE_TOKEN();
+
+        // pay txn fee
+        IERC20(feeToken).safeTransferFrom(
+            _msgSender(),
+            treasury,
+            (fee * 10 ** IERC20Metadata(feeToken).decimals()) / MULTIPLIER
+        );
 
         // burn Trireme
         TRIREME.burnFrom(_msgSender(), amount * pricePerGuardian);
@@ -343,7 +418,11 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         }
     }
 
-    /* ======== PUBLIC FUNCTIONS ======== */
+    /* ======== VIEW FUNCTIONS ======== */
+
+    function allfeeTokens() external view returns (address[] memory) {
+        return feeTokens.values();
+    }
 
     function pendingReward(
         address account
