@@ -9,6 +9,7 @@ import {ERC1155} from '@openzeppelin/contracts/token/ERC1155/ERC1155.sol';
 import {ERC1155Pausable} from '@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Pausable.sol';
 import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
 import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
+import {Strings} from '@openzeppelin/contracts/utils/Strings.sol';
 
 import {IRewardRecipient} from '../interfaces/IRewardRecipient.sol';
 import {IUniswapV2Router02} from '../interfaces/IUniswapV2Router02.sol';
@@ -21,6 +22,7 @@ error INVALID_FEE_TOKEN();
 contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
+    using Strings for uint256;
 
     /* ======== STORAGE ======== */
     struct RewardRate {
@@ -32,6 +34,9 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         uint256 debt;
         uint256 pending;
     }
+
+    /// @dev BASE URI
+    string private constant BASE_URI = 'https://trireme.io/api/guardian/';
 
     /// @notice TRIREME
     IERC20MintableBurnable public immutable TRIREME;
@@ -48,7 +53,7 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     /// @notice treasury wallet
     address public treasury;
 
-    /// @notice txn fee (15$ = 15 ether)
+    /// @notice txn fee
     uint256 public fee;
 
     /// @notice mint limit in one txn
@@ -95,7 +100,10 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     event MintLimit(uint256 oldLimit, uint256 newLimit);
     event Treasury(address oldTreasury, address newTreasury);
     event Fee(uint256 oldFee, uint256 newFee);
+    event AddFeeTokens(address[] tokens);
+    event RemoveFeeTokens(address[] tokens);
     event Mint(address indexed from, address indexed to, uint256 amount);
+    event Split(address indexed from, address indexed to, uint256 amount);
     event Claim(address indexed from, uint256 reward, uint256 dividends);
 
     /* ======== INITIALIZATION ======== */
@@ -104,18 +112,14 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         IERC20MintableBurnable trireme,
         IERC20 usdc,
         IUniswapV2Router02 router,
-        address treasury_,
-        uint256 fee_
-    ) ERC1155('https://trireme.co/guardian') {
+        address treasury_
+    ) ERC1155(BASE_URI) {
         TRIREME = trireme;
         USDC = usdc;
         ROUTER = router;
 
         if (treasury_ == address(0)) revert INVALID_ADDRESS();
-        if (fee_ == 0) revert INVALID_AMOUNT();
         treasury = treasury_;
-        fee = fee_;
-        feeTokens.add(address(usdc));
 
         // 1 Guardian: Craftsman
         // 5 Guardian: Scribe
@@ -127,6 +131,10 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
 
         // 12 Trireme per Guardian
         pricePerGuardian = 12 ether;
+
+        // txn fee $15
+        fee = 15 ether;
+        feeTokens.add(address(usdc));
 
         // option how many can mint in one txn
         mintLimit = 100;
@@ -187,6 +195,8 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
                 ++i;
             }
         }
+
+        emit AddFeeTokens(tokens);
     }
 
     function removeFeeTokens(address[] calldata tokens) external onlyOwner {
@@ -198,6 +208,8 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
                 ++i;
             }
         }
+
+        emit RemoveFeeTokens(tokens);
     }
 
     function pause() external onlyOwner {
@@ -222,18 +234,19 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         uint256[] memory burnAmounts = new uint256[](TYPE);
 
         unchecked {
-            for (uint256 i = TYPE - 1; i >= 0; --i) {
-                uint256 newBalance = totalBalance / SIZES[i];
-                uint256 oldBalance = balanceOf(account, i);
+            for (uint256 i = 0; i < TYPE; i++) {
+                uint256 index = TYPE - i - 1;
+                uint256 newBalance = totalBalance / SIZES[index];
+                uint256 oldBalance = balanceOf(account, index);
 
-                ids[i] = i;
+                ids[index] = index;
                 if (newBalance > oldBalance) {
-                    mintAmounts[i] = newBalance - oldBalance;
+                    mintAmounts[index] = newBalance - oldBalance;
                 } else if (newBalance < oldBalance) {
-                    burnAmounts[i] = oldBalance - newBalance;
+                    burnAmounts[index] = oldBalance - newBalance;
                 }
 
-                totalBalance = totalBalance % SIZES[i];
+                totalBalance = totalBalance % SIZES[index];
             }
         }
 
@@ -313,7 +326,7 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
 
     /* ======== PUBLIC FUNCTIONS ======== */
 
-    function stake(
+    function mint(
         address to,
         address feeToken,
         uint256 amount
@@ -360,6 +373,58 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         _sync(to);
 
         emit Mint(_msgSender(), to, amount);
+    }
+
+    function split(address to, uint256 amount) external update {
+        if (to == address(0)) revert INVALID_ADDRESS();
+        address from = _msgSender();
+        if (totalBalanceOf[from] < amount) revert INVALID_AMOUNT();
+
+        // from
+        {
+            // update reward
+            (
+                RewardInfo storage rewardInfo,
+                RewardInfo storage dividendsInfo
+            ) = _updateReward(from);
+
+            unchecked {
+                totalBalanceOf[from] -= amount;
+            }
+
+            // update reward debt
+            rewardInfo.debt = accTokenPerShare * totalBalanceOf[from];
+            dividendsInfo.debt =
+                (dividendsPerShare * totalBalanceOf[from]) /
+                MULTIPLIER;
+
+            // sync Guardians
+            _sync(from);
+        }
+
+        // to
+        {
+            // update reward
+            (
+                RewardInfo storage rewardInfo,
+                RewardInfo storage dividendsInfo
+            ) = _updateReward(to);
+
+            unchecked {
+                totalBalanceOf[to] += amount;
+            }
+
+            // update reward debt
+            rewardInfo.debt = accTokenPerShare * totalBalanceOf[to];
+            dividendsInfo.debt =
+                (dividendsPerShare * totalBalanceOf[to]) /
+                MULTIPLIER;
+
+            // sync Guardians
+            _sync(to);
+        }
+
+        emit Split(from, to, amount);
     }
 
     function claim() external update {
@@ -420,7 +485,18 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
 
     /* ======== VIEW FUNCTIONS ======== */
 
-    function allfeeTokens() external view returns (address[] memory) {
+    function uri(
+        uint256 tokenId
+    ) public view virtual override returns (string memory) {
+        return
+            tokenId < TYPE
+                ? string(
+                    abi.encodePacked(BASE_URI, tokenId.toString(), '.json')
+                )
+                : super.uri(tokenId);
+    }
+
+    function allFeeTokens() external view returns (address[] memory) {
         return feeTokens.values();
     }
 
