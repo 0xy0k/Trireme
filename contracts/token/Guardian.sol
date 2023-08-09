@@ -38,6 +38,9 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     /// @dev BASE URI
     string private constant BASE_URI = 'https://trireme.io/api/guardian/';
 
+    /// @notice percent multiplier (100%)
+    uint256 public constant PRECISION = 10000;
+
     /// @notice TRIREME
     IERC20MintableBurnable public immutable TRIREME;
 
@@ -53,8 +56,11 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     /// @notice treasury wallet
     address public treasury;
 
-    /// @notice txn fee
-    uint256 public fee;
+    /// @notice txn fee (price)
+    uint256 public txnFee;
+
+    /// @notice claim fee (percentage)
+    uint256 public claimFee;
 
     /// @notice mint limit in one txn
     uint256 public mintLimit;
@@ -97,12 +103,14 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
 
     /* ======== EVENTS ======== */
 
-    event MintLimit(uint256 oldLimit, uint256 newLimit);
-    event Treasury(address oldTreasury, address newTreasury);
-    event Fee(uint256 oldFee, uint256 newFee);
+    event MintLimit(uint256 limit);
+    event Treasury(address treasury);
+    event TxnFee(uint256 fee);
+    event ClaimFee(uint256 fee);
     event AddFeeTokens(address[] tokens);
     event RemoveFeeTokens(address[] tokens);
     event Mint(address indexed from, address indexed to, uint256 amount);
+    event Compound(address indexed from, address indexed to, uint256 amount);
     event Split(address indexed from, address indexed to, uint256 amount);
     event Claim(address indexed from, uint256 reward, uint256 dividends);
 
@@ -133,8 +141,11 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         pricePerGuardian = 12 ether;
 
         // txn fee $15
-        fee = 15 ether;
+        txnFee = 15 ether;
         feeTokens.add(address(usdc));
+
+        // claim fee 20%
+        claimFee = 2000;
 
         // option how many can mint in one txn
         mintLimit = 100;
@@ -162,28 +173,33 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     function setMintLimit(uint256 limit) external onlyOwner {
         if (limit == 0) revert INVALID_AMOUNT();
 
-        uint256 old = mintLimit;
         mintLimit = limit;
 
-        emit MintLimit(old, limit);
+        emit MintLimit(limit);
     }
 
     function setTreasury(address treasury_) external onlyOwner {
         if (treasury_ == address(0)) revert INVALID_ADDRESS();
 
-        address old = treasury;
         treasury = treasury_;
 
-        emit Treasury(old, treasury_);
+        emit Treasury(treasury_);
     }
 
-    function setFee(uint256 fee_) external onlyOwner {
-        if (fee_ == 0) revert INVALID_AMOUNT();
+    function setTxnFee(uint256 fee) external onlyOwner {
+        if (fee == 0) revert INVALID_AMOUNT();
 
-        uint256 old = fee;
-        fee = fee_;
+        txnFee = fee;
 
-        emit Fee(old, fee_);
+        emit TxnFee(fee);
+    }
+
+    function setClaimFee(uint256 fee) external onlyOwner {
+        if (fee >= PRECISION / 2) revert INVALID_AMOUNT();
+
+        claimFee = fee;
+
+        emit ClaimFee(fee);
     }
 
     function addFeeTokens(address[] calldata tokens) external onlyOwner {
@@ -266,13 +282,56 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         uint256 totalBalance = totalBalanceOf[account];
 
         rewardInfo = rewardInfoOf[account];
-        rewardInfo.pending += accTokenPerShare * totalBalance - rewardInfo.debt;
+        uint256 reward = accTokenPerShare * totalBalance - rewardInfo.debt;
+        uint256 fee = (reward * claimFee) / PRECISION;
+        rewardInfo.pending += reward - fee;
+        TRIREME.mint(treasury, fee);
 
         dividendsInfo = dividendsInfoOf[account];
         dividendsInfo.pending +=
             (dividendsPerShare * totalBalance) /
             MULTIPLIER -
             dividendsInfo.debt;
+    }
+
+    function _mint(address to, address feeToken, uint256 amount) internal {
+        if (to == address(0)) revert INVALID_ADDRESS();
+        if (amount == 0 || amount > mintLimit) revert INVALID_AMOUNT();
+        if (!feeTokens.contains(feeToken)) revert INVALID_FEE_TOKEN();
+
+        // pay txn fee
+        IERC20(feeToken).safeTransferFrom(
+            _msgSender(),
+            treasury,
+            (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) / MULTIPLIER
+        );
+
+        // update reward
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(to);
+
+        // mint Guardian
+        unchecked {
+            totalBalanceOf[to] += amount;
+            totalSupply += amount;
+        }
+
+        // update reward rate if exceeds the Guardians number
+        if (totalSupply > rewardRate.numberOfGuardians) {
+            rewardRate.rewardPerSec /= 2;
+            rewardRate.numberOfGuardians *= 2;
+        }
+
+        // update reward debt
+        rewardInfo.debt = accTokenPerShare * totalBalanceOf[to];
+        dividendsInfo.debt =
+            (dividendsPerShare * totalBalanceOf[to]) /
+            MULTIPLIER;
+
+        // sync Guardians
+        _sync(to);
     }
 
     function _beforeTokenTransfer(
@@ -331,48 +390,39 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         address feeToken,
         uint256 amount
     ) external update {
-        if (to == address(0)) revert INVALID_ADDRESS();
-        if (amount == 0 || amount > mintLimit) revert INVALID_AMOUNT();
-        if (!feeTokens.contains(feeToken)) revert INVALID_FEE_TOKEN();
-
-        // pay txn fee
-        IERC20(feeToken).safeTransferFrom(
-            _msgSender(),
-            treasury,
-            (fee * 10 ** IERC20Metadata(feeToken).decimals()) / MULTIPLIER
-        );
-
         // burn Trireme
         TRIREME.burnFrom(_msgSender(), amount * pricePerGuardian);
 
-        // update reward
-        (
-            RewardInfo storage rewardInfo,
-            RewardInfo storage dividendsInfo
-        ) = _updateReward(to);
-
         // mint Guardian
-        unchecked {
-            totalBalanceOf[to] += amount;
-            totalSupply += amount;
-        }
-
-        // update reward rate if exceeds the Guardians number
-        if (totalSupply > rewardRate.numberOfGuardians) {
-            rewardRate.rewardPerSec /= 2;
-            rewardRate.numberOfGuardians *= 2;
-        }
-
-        // update reward debt
-        rewardInfo.debt = accTokenPerShare * totalBalanceOf[to];
-        dividendsInfo.debt =
-            (dividendsPerShare * totalBalanceOf[to]) /
-            MULTIPLIER;
-
-        // sync Guardians
-        _sync(to);
+        _mint(to, feeToken, amount);
 
         emit Mint(_msgSender(), to, amount);
+    }
+
+    function compound(
+        address to,
+        address feeToken,
+        uint256 amount
+    ) external update {
+        // update reward
+        (RewardInfo storage rewardInfo, ) = _updateReward(_msgSender());
+
+        // burn Trireme out of rewards
+        if (amount > 0) {
+            if (rewardInfo.pending < amount * pricePerGuardian)
+                revert INVALID_AMOUNT();
+            unchecked {
+                rewardInfo.pending -= amount * pricePerGuardian;
+            }
+        } else {
+            amount = rewardInfo.pending / pricePerGuardian;
+            rewardInfo.pending %= pricePerGuardian;
+        }
+
+        // mint Guardian
+        _mint(to, feeToken, amount);
+
+        emit Compound(_msgSender(), to, amount);
     }
 
     function split(address to, uint256 amount) external update {
@@ -506,16 +556,27 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         uint256 totalBalance = totalBalanceOf[account];
 
         if (totalBalance > 0) {
-            reward =
-                (accTokenPerShare +
-                    rewardRate.rewardPerSec *
-                    (block.timestamp - lastUpdate)) *
+            // Trireme reward
+            RewardInfo memory rewardInfo = rewardInfoOf[account];
+            uint256 newAccTokenPerShare = accTokenPerShare +
+                rewardRate.rewardPerSec *
+                (block.timestamp - lastUpdate);
+            uint256 newReward = newAccTokenPerShare *
                 totalBalance -
                 rewardInfoOf[account].debt;
+            reward =
+                rewardInfo.pending +
+                newReward -
+                (newReward * claimFee) /
+                PRECISION;
+
+            // USDC reward
+            RewardInfo memory dividendsInfo = dividendsInfoOf[account];
             dividends =
+                dividendsInfo.pending +
                 (dividendsPerShare * totalBalance) /
                 MULTIPLIER -
-                dividendsInfoOf[account].debt;
+                dividendsInfo.debt;
         }
     }
 }
