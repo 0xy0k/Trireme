@@ -5,5 +5,7 @@ import {IRewardRecipient} from '../interfaces/IRewardRecipient.sol';
 contract MockRewardRecipient is IRewardRecipient {
     constructor() {}
 
+    receive() external payable {}
+
     function receiveReward() external payable override {}
 }
