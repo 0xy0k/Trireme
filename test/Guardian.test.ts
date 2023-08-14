@@ -6,7 +6,7 @@ import W3_UniswapV2Factory from '@uniswap/v2-core/build/UniswapV2Factory.json';
 import W3_UniswapV2Router02 from '@uniswap/v2-periphery/build/UniswapV2Router02.json';
 import W3_UniswapV2Pair from '@uniswap/v2-core/build/UniswapV2Pair.json';
 
-import { getTimeStamp } from '../helper';
+import { getTimeStamp, increaseTime } from '../helper';
 
 import { Guardian } from './../types/contracts/token/Guardian';
 import { Trireme } from './../types/contracts/token/Trireme';
@@ -716,6 +716,290 @@ describe('Guardian', function () {
           await guardian.balanceOf(holder.address, tokenIdFromSize(100))
         ).equal(5);
       });
+    });
+  });
+
+  describe('#reward + #compound', () => {
+    const transferAmount = ethers.utils.parseEther('60');
+    const guardianTaxAmount = transferAmount.mul(guardianFee).div(multiplier);
+    const liquidityTaxAmount = transferAmount.mul(liquidityFee).div(multiplier);
+    const marketingTaxAmount = transferAmount.mul(marketingFee).div(multiplier);
+    const taxAmount = guardianTaxAmount
+      .add(liquidityTaxAmount)
+      .add(marketingTaxAmount);
+    let deadline: number;
+
+    beforeEach(async function () {
+      await trireme.mint(trader.address, transferAmount);
+      await usdc.mint(deployer.address, usdcAmount);
+
+      await trireme.approve(guardian.address, ethers.constants.MaxUint256);
+      await usdc.approve(guardian.address, ethers.constants.MaxUint256);
+
+      await guardian.mint(trader.address, usdc.address, 10);
+      await guardian.mint(holder.address, usdc.address, 1);
+
+      const ethOut = await uniswapv2Router.getAmountOut(
+        guardianTaxAmount.add(marketingTaxAmount),
+        triremeAmount,
+        ethAmount
+      );
+
+      deadline = (await getTimeStamp()) + 3600;
+
+      await trireme.setSwapTaxSettings(true, taxAmount);
+      await trireme
+        .connect(trader)
+        .approve(uniswapv2Router.address, ethers.constants.MaxUint256);
+      await uniswapv2Router
+        .connect(trader)
+        .swapExactTokensForTokensSupportingFeeOnTransferTokens(
+          transferAmount,
+          0,
+          [trireme.address, weth.address],
+          holder.address,
+          deadline
+        );
+    });
+
+    it('trireme pending reward', async function () {
+      await increaseTime(86400); // 1 day
+
+      console.log(
+        'Trireme pending: ',
+        (await guardian.pendingReward(trader.address))[0].toString(),
+        (await guardian.pendingReward(holder.address))[0].toString()
+      );
+
+      expect((await guardian.pendingReward(trader.address))[0]).gt(
+        ethers.utils.parseEther('0.1').mul(10).mul(80).div(100)
+      );
+      expect((await guardian.pendingReward(holder.address))[0]).gt(
+        ethers.utils.parseEther('0.1').mul(80).div(100)
+      );
+    });
+
+    it('claim trireme', async function () {
+      await increaseTime(86400); // 1 day
+
+      await guardian.connect(trader).claim();
+      await guardian.connect(holder).claim();
+
+      console.log(
+        'Trireme claimed: ',
+        (await trireme.balanceOf(trader.address)).toString(),
+        (await trireme.balanceOf(holder.address)).toString()
+      );
+      console.log(
+        'Trireme pending: ',
+        (await guardian.pendingReward(trader.address))[0].toString(),
+        (await guardian.pendingReward(holder.address))[0].toString()
+      );
+
+      expect(await trireme.balanceOf(trader.address)).gt(
+        ethers.utils.parseEther('0.1').mul(10).mul(80).div(100)
+      );
+      expect(await trireme.balanceOf(holder.address)).gt(
+        ethers.utils.parseEther('0.1').mul(80).div(100)
+      );
+
+      console.log(
+        'Treasury: ',
+        (await trireme.balanceOf(treasury.address)).toString()
+      );
+      expect(await trireme.balanceOf(treasury.address)).gt(
+        ethers.utils
+          .parseEther('0.1')
+          .mul(10)
+          .mul(20)
+          .div(100)
+          .add(ethers.utils.parseEther('0.1').mul(20).div(100))
+      );
+    });
+
+    it('trireme reward rate', async function () {
+      let oldRate = await guardian.rewardRate();
+
+      console.log(
+        'Old Reward Rate: ',
+        oldRate.rewardPerSec.toString(),
+        oldRate.numberOfGuardians.toString()
+      );
+
+      await guardian.setMintLimit(oldRate.numberOfGuardians);
+      await guardian.mint(
+        deployer.address,
+        usdc.address,
+        oldRate.numberOfGuardians
+      );
+
+      let newRate = await guardian.rewardRate();
+
+      console.log(
+        'New Reward Rate: ',
+        newRate.rewardPerSec.toString(),
+        newRate.numberOfGuardians.toString()
+      );
+
+      await increaseTime(86400); // 1 day
+
+      console.log(
+        'Trireme pending: ',
+        (await guardian.pendingReward(deployer.address))[0].toString()
+      );
+
+      expect((await guardian.pendingReward(deployer.address))[0]).lt(
+        ethers.utils
+          .parseEther('0.1')
+          .mul(oldRate.numberOfGuardians)
+          .mul(80)
+          .div(100)
+      );
+      expect((await guardian.pendingReward(deployer.address))[0]).gte(
+        ethers.utils
+          .parseEther('0.05')
+          .div(86400)
+          .mul(86400)
+          .mul(oldRate.numberOfGuardians)
+          .mul(80)
+          .div(100)
+      );
+    });
+
+    it('usdc pending reward', async function () {
+      let fee = await usdc.balanceOf(guardian.address);
+
+      console.log('USDC Received: ', fee.toString());
+      console.log(
+        'USDC pending: ',
+        (await guardian.pendingReward(trader.address))[1].toString(),
+        (await guardian.pendingReward(holder.address))[1].toString()
+      );
+
+      expect((await guardian.pendingReward(trader.address))[1]).equal(
+        fee.mul(10).div(11)
+      );
+      expect((await guardian.pendingReward(holder.address))[1]).equal(
+        fee.mul(1).div(11)
+      );
+    });
+
+    it('claim usdc', async function () {
+      let fee = await usdc.balanceOf(guardian.address);
+
+      await guardian.connect(trader).claim();
+      await guardian.connect(holder).claim();
+
+      console.log(
+        'USDC claimed: ',
+        (await usdc.balanceOf(trader.address)).toString(),
+        (await usdc.balanceOf(holder.address)).toString()
+      );
+      console.log(
+        'USDC pending: ',
+        (await guardian.pendingReward(trader.address))[1].toString(),
+        (await guardian.pendingReward(holder.address))[1].toString()
+      );
+
+      expect(await usdc.balanceOf(trader.address)).equal(fee.mul(10).div(11));
+      expect(await usdc.balanceOf(holder.address)).equal(fee.mul(1).div(11));
+      expect(await usdc.balanceOf(guardian.address)).equal(
+        ethers.constants.Zero
+      );
+    });
+
+    it('compound all', async function () {
+      await guardian.mint(deployer.address, usdc.address, 100); // 100 guardians so 10 trireme per day
+      await increaseTime(10 * 86400); // 10 days so 80 trireme for reward
+
+      console.log(
+        'Before Pending: ',
+        (await guardian.pendingReward(deployer.address))[0].toString()
+      );
+      console.log(
+        'Before USDC Teasury: ',
+        (await usdc.balanceOf(treasury.address)).toString()
+      );
+
+      const amount = 6; // 80 / 12 ~~ 8
+      const tx = await guardian.compound(trader.address, usdc.address, 0);
+      await expect(tx)
+        .to.emit(guardian, 'Compound')
+        .withArgs(deployer.address, trader.address, amount);
+
+      console.log(
+        'After Pending: ',
+        (await guardian.pendingReward(deployer.address))[0].toString()
+      );
+      console.log(
+        'After USDC Teasury: ',
+        (await usdc.balanceOf(treasury.address)).toString()
+      );
+
+      expect(await guardian.totalBalanceOf(trader.address)).equal(10 + amount);
+    });
+
+    it('compound', async function () {
+      await guardian.mint(deployer.address, usdc.address, 100); // 100 guardians so 10 trireme per day
+      await increaseTime(10 * 86400); // 10 days so 80 trireme for reward
+
+      console.log(
+        'Before Pending: ',
+        (await guardian.pendingReward(deployer.address))[0].toString()
+      );
+      console.log(
+        'Before USDC Teasury: ',
+        (await usdc.balanceOf(treasury.address)).toString()
+      );
+
+      {
+        const amount = 3;
+        const tx = await guardian.compound(
+          trader.address,
+          usdc.address,
+          amount
+        );
+        await expect(tx)
+          .to.emit(guardian, 'Compound')
+          .withArgs(deployer.address, trader.address, amount);
+
+        console.log(
+          'After Pending: ',
+          (await guardian.pendingReward(deployer.address))[0].toString()
+        );
+        console.log(
+          'After USDC Teasury: ',
+          (await usdc.balanceOf(treasury.address)).toString()
+        );
+
+        expect(await guardian.totalBalanceOf(trader.address)).equal(
+          10 + amount
+        );
+      }
+      {
+        const amount = 3;
+        const tx = await guardian.compound(
+          trader.address,
+          usdc.address,
+          amount
+        );
+        await expect(tx)
+          .to.emit(guardian, 'Compound')
+          .withArgs(deployer.address, trader.address, amount);
+
+        console.log(
+          'After Pending: ',
+          (await guardian.pendingReward(deployer.address))[0].toString()
+        );
+        console.log(
+          'After USDC Teasury: ',
+          (await usdc.balanceOf(treasury.address)).toString()
+        );
+
+        expect(await guardian.totalBalanceOf(trader.address)).equal(
+          10 + amount + amount
+        );
+      }
     });
   });
 });

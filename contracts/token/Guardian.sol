@@ -390,13 +390,15 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         address feeToken,
         uint256 amount
     ) external update {
+        address account = _msgSender();
+
         // burn Trireme
-        TRIREME.burnFrom(_msgSender(), amount * pricePerGuardian);
+        TRIREME.burnFrom(account, amount * pricePerGuardian);
 
         // mint Guardian
         _mint(to, feeToken, amount);
 
-        emit Mint(_msgSender(), to, amount);
+        emit Mint(account, to, amount);
     }
 
     function compound(
@@ -404,8 +406,11 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         address feeToken,
         uint256 amount
     ) external update {
+        address account = _msgSender();
+
         // update reward
-        (RewardInfo storage rewardInfo, ) = _updateReward(_msgSender());
+        (RewardInfo storage rewardInfo, ) = _updateReward(account);
+        rewardInfo.debt = accTokenPerShare * totalBalanceOf[account];
 
         // burn Trireme out of rewards
         if (amount > 0) {
@@ -422,7 +427,7 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         // mint Guardian
         _mint(to, feeToken, amount);
 
-        emit Compound(_msgSender(), to, amount);
+        emit Compound(account, to, amount);
     }
 
     function split(address to, uint256 amount) external update {
