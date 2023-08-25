@@ -17,6 +17,7 @@ import {IERC20MintableBurnable} from '../interfaces/IERC20MintableBurnable.sol';
 
 error INVALID_ADDRESS();
 error INVALID_AMOUNT();
+error INVALID_PARAM();
 error INVALID_FEE_TOKEN();
 
 contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
@@ -236,6 +237,22 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         _unpause();
     }
 
+    function airdrop(
+        address[] calldata tos,
+        uint256[] calldata amounts
+    ) external onlyOwner update {
+        uint256 length = tos.length;
+        if (length != amounts.length) revert INVALID_PARAM();
+
+        for (uint256 i = 0; i < length; ) {
+            _simpleMint(tos[i], amounts[i]);
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
     /* ======== INTERNAL FUNCTIONS ======== */
 
     function _min(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -306,6 +323,10 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
             (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) / MULTIPLIER
         );
 
+        _simpleMint(to, amount);
+    }
+
+    function _simpleMint(address to, uint256 amount) internal {
         // update reward
         (
             RewardInfo storage rewardInfo,
