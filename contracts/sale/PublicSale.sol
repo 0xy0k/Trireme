@@ -120,6 +120,6 @@ contract PublicSale is Ownable, Pausable, ReentrancyGuard {
 
         if (triremeAmount > totalTriremeAmount) revert EXCEED_SALE();
 
-        TRIREME.mint(_msgSender(), eth);
+        TRIREME.mint(_msgSender(), amount);
     }
 }
