@@ -12,6 +12,7 @@ import {IERC20MintableBurnable} from '../interfaces/IERC20MintableBurnable.sol';
 
 error INVALID_AMOUNT();
 error NO_ETHER();
+error LIMIT_ETHER();
 error EXCEED_SALE();
 error NOT_STARTED();
 error ALREADY_ENDED();
@@ -39,6 +40,12 @@ contract PublicSale is Ownable, Pausable, ReentrancyGuard {
 
     /// @notice end timestamp
     uint256 public endTimestamp;
+
+    /// @notice limit eth per user
+    uint256 public limitEth = 2 ether;
+
+    /// @notice user => eth
+    mapping(address => uint256) public userEth;
 
     /* ======== EVENTS ======== */
 
@@ -88,6 +95,12 @@ contract PublicSale is Ownable, Pausable, ReentrancyGuard {
         endTimestamp = end;
     }
 
+    function setLimitEth(uint256 eth) external onlyOwner {
+        if (eth == 0) revert NO_ETHER();
+
+        limitEth = eth;
+    }
+
     function withdrawETH(address payable to) external onlyOwner {
         (bool sent, ) = to.call{value: address(this).balance}('');
         require(sent, 'Failed to send Ether');
@@ -107,6 +120,10 @@ contract PublicSale is Ownable, Pausable, ReentrancyGuard {
 
     /* ======== PUBLIC FUNCTIONS ======== */
 
+    function maxEth(address account) external view returns (uint256) {
+        return limitEth - userEth[account];
+    }
+
     function buy() external payable whenNotPaused nonReentrant {
         if (startTimestamp > block.timestamp) revert NOT_STARTED();
         if (endTimestamp < block.timestamp) revert ALREADY_ENDED();
@@ -114,12 +131,16 @@ contract PublicSale is Ownable, Pausable, ReentrancyGuard {
         uint256 eth = msg.value;
         if (eth == 0) revert NO_ETHER();
 
+        address account = _msgSender();
+        userEth[account] += eth;
+        if (userEth[account] > limitEth) revert LIMIT_ETHER();
+
         uint256 amount = (eth * totalTriremeAmount) / totalEthAmount;
         triremeAmount += amount;
         ethAmount += eth;
 
         if (triremeAmount > totalTriremeAmount) revert EXCEED_SALE();
 
-        TRIREME.mint(_msgSender(), amount);
+        TRIREME.mint(account, amount);
     }
 }
