@@ -10,8 +10,10 @@ import {IERC20MintableBurnable} from '../interfaces/IERC20MintableBurnable.sol';
 import {IERC20Pausable} from '../interfaces/IERC20Pausable.sol';
 import {IUniswapV2Router02} from '../interfaces/IUniswapV2Router02.sol';
 
+error ACTIVATED();
 error INVALID_AMOUNT();
 error INVALID_ETHER();
+error INVALID_LENGTH();
 
 contract Activate is Ownable {
     using SafeERC20 for IERC20;
@@ -36,6 +38,9 @@ contract Activate is Ownable {
     /// @notice Trireme amount for burning
     uint256 public burnAmount = 60000 ether;
 
+    /// @notice Activated
+    bool public isActivated;
+
     /* ======== INITIALIZATION ======== */
 
     constructor() {
@@ -57,7 +62,13 @@ contract Activate is Ownable {
         burnAmount = trireme;
     }
 
-    function activate() external payable onlyOwner {
+    function activate(
+        address[] calldata tos,
+        uint256[] calldata amounts
+    ) external payable onlyOwner {
+        if (isActivated) revert ACTIVATED();
+        isActivated = true;
+
         if (msg.value != ethForLiquidity) revert INVALID_ETHER();
 
         address account = _msgSender();
@@ -74,6 +85,17 @@ contract Activate is Ownable {
             );
         }
 
+        // Airdrop Trireme
+        uint256 length = tos.length;
+        if (length != amounts.length) revert INVALID_LENGTH();
+
+        for (uint256 i = 0; i < length; ) {
+            TRIREME.safeTransferFrom(account, tos[i], amounts[i]);
+            unchecked {
+                ++i;
+            }
+        }
+
         // Transfer Trireme
         TRIREME.safeTransferFrom(account, address(this), triremeForLiquidity);
         TRIREME.approve(address(ROUTER), triremeForLiquidity);
@@ -86,6 +108,12 @@ contract Activate is Ownable {
             0,
             account,
             block.timestamp
+        );
+
+        // Renounce Pauser Role
+        IERC20Pausable(address(TRIREME)).renounceRole(
+            IERC20Pausable(address(TRIREME)).PAUSER_ROLE(),
+            address(this)
         );
     }
 }

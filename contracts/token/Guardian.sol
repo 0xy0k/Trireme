@@ -6,8 +6,8 @@ import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 import {IERC20Metadata} from '@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol';
 import {ERC1155} from '@openzeppelin/contracts/token/ERC1155/ERC1155.sol';
-import {ERC1155Pausable} from '@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Pausable.sol';
-import {Ownable} from '@openzeppelin/contracts/access/Ownable.sol';
+import {ERC1155PausableUpgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC1155/extensions/ERC1155PausableUpgradeable.sol';
+import {OwnableUpgradeable} from '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
 import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 import {Strings} from '@openzeppelin/contracts/utils/Strings.sol';
 
@@ -20,7 +20,11 @@ error INVALID_AMOUNT();
 error INVALID_PARAM();
 error INVALID_FEE_TOKEN();
 
-contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
+contract Guardian is
+    ERC1155PausableUpgradeable,
+    OwnableUpgradeable,
+    IRewardRecipient
+{
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
     using Strings for uint256;
@@ -37,22 +41,28 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     }
 
     /// @dev BASE URI
-    string private constant BASE_URI = 'https://trireme.io/api/guardian/';
+    string private constant BASE_URI = 'https://metadata.trireme.io/guardian/';
+
+    /// @notice name
+    string public constant name = 'Trireme Guardian';
 
     /// @notice percent multiplier (100%)
     uint256 public constant PRECISION = 10000;
 
     /// @notice TRIREME
-    IERC20MintableBurnable public immutable TRIREME;
+    IERC20MintableBurnable public constant TRIREME =
+        IERC20MintableBurnable(0x5fE72ed557d8a02FFf49B3B826792c765d5cE162);
 
     /// @notice Fee Token (USDC)
-    IERC20 public immutable USDC;
+    IERC20 public constant USDC =
+        IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
 
     /// @notice Uniswap Router
-    IUniswapV2Router02 public immutable ROUTER;
+    IUniswapV2Router02 public constant ROUTER =
+        IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
     /// @notice price per guardian
-    uint256 public immutable pricePerGuardian;
+    uint256 public pricePerGuardian;
 
     /// @notice treasury wallet
     address public treasury;
@@ -117,16 +127,12 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
 
     /* ======== INITIALIZATION ======== */
 
-    constructor(
-        IERC20MintableBurnable trireme,
-        IERC20 usdc,
-        IUniswapV2Router02 router,
-        address treasury_
-    ) ERC1155(BASE_URI) {
-        TRIREME = trireme;
-        USDC = usdc;
-        ROUTER = router;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
 
+    function initialize(address treasury_) external initializer {
         if (treasury_ == address(0)) revert INVALID_ADDRESS();
         treasury = treasury_;
 
@@ -143,7 +149,9 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
 
         // txn fee $15
         txnFee = 15 ether;
-        feeTokens.add(address(usdc));
+        feeTokens.add(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); // USDC
+        feeTokens.add(0xdAC17F958D2ee523a2206206994597C13D831ec7); // USDT
+        feeTokens.add(0x6B175474E89094C44Da98b954EedeAC495271d0F); // DAI
 
         // claim fee 20%
         claimFee = 2000;
@@ -154,6 +162,43 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         // 0.1 Trireme per day for first 250,000 guardians
         rewardRate.rewardPerSec = uint256(0.1 ether) / uint256(1 days);
         rewardRate.numberOfGuardians = 250000;
+
+        // init
+        __ERC1155Pausable_init();
+        __ERC1155_init(BASE_URI);
+        __Ownable_init();
+    }
+
+    function migrate(
+        Guardian oldGuardian,
+        address[] calldata accounts
+    ) external onlyOwner {
+        uint256 length = accounts.length;
+
+        for (uint256 i = 0; i < length; i++) {
+            address account = accounts[i];
+
+            // claimable
+            (uint256 reward, uint256 dividends) = oldGuardian.pendingReward(
+                account
+            );
+            rewardInfoOf[account].pending = reward;
+            dividendsInfoOf[account].pending = dividends;
+
+            // mint
+            for (uint256 j = 0; j < TYPE; j++) {
+                uint256 amount = oldGuardian.balanceOf(account, j);
+
+                if (amount > 0) {
+                    super._mint(account, j, amount, '');
+                }
+            }
+
+            totalBalanceOf[account] = oldGuardian.totalBalanceOf(account);
+        }
+
+        totalSupply = oldGuardian.totalSupply();
+        lastUpdate = block.timestamp;
     }
 
     /* ======== MODIFIERS ======== */
@@ -237,6 +282,10 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         _unpause();
     }
 
+    function recoverERC20(IERC20 token) external onlyOwner {
+        token.safeTransfer(_msgSender(), token.balanceOf(address(this)));
+    }
+
     function airdrop(
         address[] calldata tos,
         uint256[] calldata amounts
@@ -262,29 +311,21 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     function _sync(address account) internal {
         uint256 totalBalance = totalBalanceOf[account];
 
-        uint256[] memory ids = new uint256[](TYPE);
-        uint256[] memory mintAmounts = new uint256[](TYPE);
-        uint256[] memory burnAmounts = new uint256[](TYPE);
-
         unchecked {
             for (uint256 i = 0; i < TYPE; i++) {
                 uint256 index = TYPE - i - 1;
                 uint256 newBalance = totalBalance / SIZES[index];
                 uint256 oldBalance = balanceOf(account, index);
 
-                ids[index] = index;
                 if (newBalance > oldBalance) {
-                    mintAmounts[index] = newBalance - oldBalance;
+                    super._mint(account, index, newBalance - oldBalance, '');
                 } else if (newBalance < oldBalance) {
-                    burnAmounts[index] = oldBalance - newBalance;
+                    super._burn(account, index, oldBalance - newBalance);
                 }
 
                 totalBalance = totalBalance % SIZES[index];
             }
         }
-
-        _mintBatch(account, ids, mintAmounts, '');
-        _burnBatch(account, ids, burnAmounts);
     }
 
     function _updateReward(
@@ -298,12 +339,16 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
     {
         uint256 totalBalance = totalBalanceOf[account];
 
+        // Trireme
         rewardInfo = rewardInfoOf[account];
         uint256 reward = accTokenPerShare * totalBalance - rewardInfo.debt;
         uint256 fee = (reward * claimFee) / PRECISION;
         rewardInfo.pending += reward - fee;
-        TRIREME.mint(treasury, fee);
+        if (fee > 0) {
+            TRIREME.mint(treasury, fee);
+        }
 
+        // USDC
         dividendsInfo = dividendsInfoOf[account];
         dividendsInfo.pending +=
             (dividendsPerShare * totalBalance) /
@@ -317,11 +362,21 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         if (!feeTokens.contains(feeToken)) revert INVALID_FEE_TOKEN();
 
         // pay txn fee
-        IERC20(feeToken).safeTransferFrom(
-            _msgSender(),
-            treasury,
-            (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) / MULTIPLIER
-        );
+        RewardInfo storage dividendsInfo = dividendsInfoOf[to];
+        uint256 usdcFee = (txnFee *
+            10 ** IERC20Metadata(address(USDC)).decimals()) / MULTIPLIER;
+
+        if (dividendsInfo.pending >= usdcFee) {
+            dividendsInfo.pending -= usdcFee;
+            USDC.safeTransfer(treasury, usdcFee);
+        } else {
+            IERC20(feeToken).safeTransferFrom(
+                _msgSender(),
+                treasury,
+                (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) /
+                    MULTIPLIER
+            );
+        }
 
         _simpleMint(to, amount);
     }
@@ -416,6 +471,16 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         // burn Trireme
         TRIREME.burnFrom(account, amount * pricePerGuardian);
 
+        // update reward
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(account);
+        rewardInfo.debt = accTokenPerShare * totalBalanceOf[account];
+        dividendsInfo.debt =
+            (dividendsPerShare * totalBalanceOf[account]) /
+            MULTIPLIER;
+
         // mint Guardian
         _mint(to, feeToken, amount);
 
@@ -430,8 +495,14 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
         address account = _msgSender();
 
         // update reward
-        (RewardInfo storage rewardInfo, ) = _updateReward(account);
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(account);
         rewardInfo.debt = accTokenPerShare * totalBalanceOf[account];
+        dividendsInfo.debt =
+            (dividendsPerShare * totalBalanceOf[account]) /
+            MULTIPLIER;
 
         // burn Trireme out of rewards
         if (amount > 0) {
@@ -605,4 +676,6 @@ contract Guardian is ERC1155Pausable, Ownable, IRewardRecipient {
                 dividendsInfo.debt;
         }
     }
+
+    uint256[49] private __gap;
 }

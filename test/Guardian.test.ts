@@ -173,13 +173,13 @@ describe('Guardian', function () {
   describe('#configuration', () => {
     it('uri', async function () {
       expect(await guardian.uri(BigNumber.from(0))).equal(
-        'https://trireme.io/api/guardian/0.json'
+        'https://metadata.trireme.io/guardian/0.json'
       );
       expect(await guardian.uri(BigNumber.from(5))).equal(
-        'https://trireme.io/api/guardian/5.json'
+        'https://metadata.trireme.io/guardian/5.json'
       );
       expect(await guardian.uri(BigNumber.from(6))).equal(
-        'https://trireme.io/api/guardian/'
+        'https://metadata.trireme.io/guardian/'
       );
     });
     it('trireme', async function () {
