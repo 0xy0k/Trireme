@@ -11,6 +11,7 @@ import {IERC20Metadata} from '@openzeppelin/contracts/token/ERC20/extensions/IER
 import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
 
 import {IAddressProvider} from '../interfaces/IAddressProvider.sol';
+import {IGuardian} from '../interfaces/IGuardian.sol';
 import {IPriceOracleAggregator} from '../interfaces/IPriceOracleAggregator.sol';
 
 contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
@@ -25,10 +26,16 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
         address principal; // token used to create bond
         uint256 amount; // princial deposited amount
         uint256 payout; // trireme remaining to be paid
+        uint256 guardians; // guardians locked
         uint256 vesting; // Blocks left to vest
         uint256 lastBlockAt; // Last interaction
         uint256 pricePaid; // In DAI, for front end viewing
         address depositor; //deposit address
+    }
+
+    struct RewardInfo {
+        uint256 debt;
+        uint256 pending;
     }
 
     /// @notice percent multiplier (100%)
@@ -43,11 +50,20 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
     /// @dev tokens used to create bond
     EnumerableSet.AddressSet private principals;
 
+    /// @notice guardian reward fee
+    uint256 public guardianRewardFee;
+
     /// @notice id of deposit
     uint256 public depositId;
 
     /// @notice mapping depositId => bond info
     mapping(uint256 => Bond) public bondInfo;
+
+    /// @dev mapping depositId => reward info
+    mapping(uint256 => RewardInfo) private rewardInfoOf;
+
+    /// @dev mapping depositId => dividendsInfo
+    mapping(uint256 => RewardInfo) private dividendsInfoOf;
 
     /// @dev mapping account => depositId array
     mapping(address => EnumerableSet.UintSet) private ownedDeposits;
@@ -58,6 +74,9 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
     /// @notice mapping locking period => discount
     mapping(uint256 => uint256) public lockingDiscounts;
 
+    /// @notice total deposited value
+    uint256 public totalDepositedValue;
+
     /// @notice total remaining payout for bonding
     uint256 public totalRemainingPayout;
 
@@ -66,6 +85,12 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
 
     /// @notice mapping principal => total bonded amount
     mapping(address => uint256) public totalPrincipals;
+
+    /// @dev reward accTokenPerShare
+    uint256 private accTokenPerShare;
+
+    /// @dev USDC dividendsPerShare
+    uint256 private dividendsPerShare;
 
     /* ======== EVENTS ======== */
 
@@ -81,7 +106,14 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
         uint256 depositId,
         address indexed recipient,
         uint256 payout,
+        uint256 guardians,
         uint256 remaining
+    );
+    event BondMinted(
+        uint256 depositId,
+        address indexed recipient,
+        uint256 payout,
+        uint256 guardians
     );
 
     /* ======== ERRORS ======== */
@@ -95,6 +127,7 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
     error INSUFFICIENT_BALANCE();
     error NOT_OWNED_DEPOSIT();
     error NOT_FULLY_VESTED();
+    error EXCEED_AMOUNT();
 
     /* ======== INITIALIZATION ======== */
 
@@ -109,6 +142,9 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
         // address provider
         addressProvider = IAddressProvider(_addressProvider);
 
+        // guardian reward fee
+        guardianRewardFee = MULTIPLIER / 2;
+
         // deposit index
         depositId = 1;
 
@@ -121,6 +157,11 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
 
     modifier onlyPrincipal(address _principal) {
         if (!principals.contains(_principal)) revert INVALID_PRINCIPAL();
+        _;
+    }
+
+    modifier update() {
+        _receiveGuardianReward();
         _;
     }
 
@@ -200,6 +241,34 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
     }
 
     /**
+     * @notice deposit for bond
+     * @param _amount uint
+     */
+    function depositForBond(uint256 _amount) external onlyOwner {
+        IERC20(addressProvider.getTrireme()).safeTransferFrom(
+            msg.sender,
+            address(this),
+            _amount
+        );
+
+        totalDepositedValue += _amount;
+    }
+
+    /**
+     * @notice recover tokens
+     */
+    function recoverERC20(IERC20 _token) external onlyOwner {
+        uint256 amount = _token.balanceOf(address(this));
+
+        if (address(_token) == addressProvider.getTrireme()) {
+            amount = amount - totalRemainingPayout;
+            totalDepositedValue -= amount;
+        }
+
+        _token.safeTransfer(msg.sender, amount);
+    }
+
+    /**
      * @notice pause
      */
     function pause() external onlyOwner whenNotPaused {
@@ -243,13 +312,11 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
 
         // total remaining payout is increased
         totalRemainingPayout = totalRemainingPayout + payout;
-        if (
-            totalRemainingPayout >
-            IERC20(addressProvider.getTrireme()).balanceOf(address(this))
-        ) revert INSUFFICIENT_BALANCE();
 
         // total bonded value is increased
         totalBondedValue = totalBondedValue + payout;
+        if (totalDepositedValue < totalBondedValue)
+            revert INSUFFICIENT_BALANCE();
 
         // principal is transferred
         IERC20(_principal).safeTransferFrom(
@@ -266,6 +333,7 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
             principal: _principal,
             amount: _amount,
             payout: payout,
+            guardians: 0,
             vesting: _lockingPeriod,
             lastBlockAt: block.timestamp,
             pricePaid: priceInUSD,
@@ -297,7 +365,7 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
      */
     function redeem(
         uint256 _depositId
-    ) external whenNotPaused returns (uint256) {
+    ) external whenNotPaused update returns (uint256) {
         Bond memory info = bondInfo[_depositId];
         address _recipient = info.depositor;
         if (msg.sender != _recipient) revert NOT_OWNED_DEPOSIT();
@@ -305,6 +373,14 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
         // (blocks since last interaction / vesting term remaining)
         if (percentVestedFor(_depositId) < MULTIPLIER)
             revert NOT_FULLY_VESTED();
+
+        // update reward
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(_depositId);
+        rewardInfo.debt = (accTokenPerShare * info.guardians) / 1e18;
+        dividendsInfo.debt = (dividendsPerShare * info.guardians) / 1e18;
 
         // delete user info
         delete bondInfo[_depositId];
@@ -319,10 +395,152 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
             info.payout
         );
 
+        // send guardians and rewards
+        if (info.guardians > 0) {
+            IGuardian guardian = IGuardian(addressProvider.getGuardian());
+            guardian.split(_recipient, info.guardians);
+
+            // Trireme
+            if (rewardInfo.pending > 0) {
+                IERC20(addressProvider.getTrireme()).safeTransfer(
+                    _recipient,
+                    rewardInfo.pending
+                );
+                delete rewardInfoOf[_depositId];
+            }
+
+            // USDC
+            if (dividendsInfo.pending > 0) {
+                IERC20(guardian.USDC()).safeTransfer(
+                    _recipient,
+                    dividendsInfo.pending
+                );
+                delete dividendsInfoOf[_depositId];
+            }
+        }
+
         // event
-        emit BondRedeemed(_depositId, _recipient, info.payout, 0);
+        emit BondRedeemed(
+            _depositId,
+            _recipient,
+            info.payout,
+            info.guardians,
+            0
+        );
 
         return info.payout;
+    }
+
+    /**
+     * @notice mint guardians from bond
+     * @param _depositId uint
+     * @param _amount uint
+     */
+    function mint(
+        uint256 _depositId,
+        address _feeToken,
+        uint256 _amount
+    ) external whenNotPaused update {
+        Bond storage info = bondInfo[_depositId];
+        address _recipient = info.depositor;
+        if (msg.sender != _recipient) revert NOT_OWNED_DEPOSIT();
+
+        // price to mint amount of guardians
+        IGuardian guardian = IGuardian(addressProvider.getGuardian());
+        uint256 price = guardian.pricePerGuardian() * _amount;
+        if (info.payout < price) revert EXCEED_AMOUNT();
+
+        // update reward
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(_depositId);
+
+        // decrease info payout
+        info.payout -= price;
+
+        // bond
+        IERC20(addressProvider.getTrireme()).safeIncreaseAllowance(
+            address(guardian),
+            price
+        );
+        guardian.bond(_recipient, _feeToken, _amount);
+
+        // increase info guardians
+        info.guardians += _amount;
+
+        // update reward debt
+        rewardInfo.debt = (accTokenPerShare * info.guardians) / 1e18;
+        dividendsInfo.debt = (dividendsPerShare * info.guardians) / 1e18;
+
+        // event
+        emit BondMinted(_depositId, _recipient, price, _amount);
+    }
+
+    /* ======== INTERNAL FUNCTIONS ======== */
+
+    function _updateReward(
+        uint256 _depositId
+    )
+        internal
+        returns (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        )
+    {
+        Bond storage info = bondInfo[_depositId];
+
+        // Trireme
+        rewardInfo = rewardInfoOf[_depositId];
+        rewardInfo.pending +=
+            (accTokenPerShare * info.guardians) /
+            1e18 -
+            rewardInfo.debt;
+
+        // USDC
+        dividendsInfo = dividendsInfoOf[_depositId];
+        dividendsInfo.pending +=
+            (dividendsPerShare * info.guardians) /
+            1e18 -
+            dividendsInfo.debt;
+    }
+
+    function _receiveGuardianReward() internal {
+        IGuardian guardian = IGuardian(addressProvider.getGuardian());
+        uint256 totalGuardians = guardian.totalBalanceOf(address(this));
+        if (totalGuardians == 0) return;
+
+        IERC20 trireme = IERC20(addressProvider.getTrireme());
+        IERC20 usdc = IERC20(guardian.USDC());
+
+        // before
+        uint256 beforeTrireme = trireme.balanceOf(address(this));
+        uint256 beforeUSDC = usdc.balanceOf(address(this));
+
+        // claim guardian reward
+        guardian.claim();
+
+        // reward of Trireme
+        uint256 reward = trireme.balanceOf(address(this)) - beforeTrireme;
+        if (reward > 0) {
+            uint256 fee = (reward * guardianRewardFee) / MULTIPLIER;
+            if (fee > 0) {
+                trireme.safeTransfer(addressProvider.getTreasury(), fee);
+                reward -= fee;
+            }
+            accTokenPerShare += (reward * 1e18) / totalGuardians;
+        }
+
+        // dividends of USDC
+        uint256 dividends = usdc.balanceOf(address(this)) - beforeUSDC;
+        if (dividends > 0) {
+            uint256 fee = (dividends * guardianRewardFee) / MULTIPLIER;
+            if (fee > 0) {
+                usdc.safeTransfer(addressProvider.getTreasury(), fee);
+                dividends -= fee;
+            }
+            dividendsPerShare += (dividends * 1e18) / totalGuardians;
+        }
     }
 
     /* ======== VIEW FUNCTIONS ======== */
@@ -464,4 +682,6 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
             pendingPayouts_[i] = pendingPayoutFor(depositId_);
         }
     }
+
+    uint256[49] private __gap;
 }

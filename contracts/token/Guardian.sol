@@ -11,6 +11,7 @@ import {OwnableUpgradeable} from '@openzeppelin/contracts-upgradeable/access/Own
 import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 import {Strings} from '@openzeppelin/contracts/utils/Strings.sol';
 
+import {IAddressProvider} from '../interfaces/IAddressProvider.sol';
 import {IRewardRecipient} from '../interfaces/IRewardRecipient.sol';
 import {IUniswapV2Router02} from '../interfaces/IUniswapV2Router02.sol';
 import {IERC20MintableBurnable} from '../interfaces/IERC20MintableBurnable.sol';
@@ -19,6 +20,7 @@ error INVALID_ADDRESS();
 error INVALID_AMOUNT();
 error INVALID_PARAM();
 error INVALID_FEE_TOKEN();
+error ONLY_BOND();
 
 contract Guardian is
     ERC1155PausableUpgradeable,
@@ -112,6 +114,9 @@ contract Guardian is
     /// @dev dividends multiplier
     uint256 private constant MULTIPLIER = 1e18;
 
+    /// @notice address provider
+    IAddressProvider public addressProvider;
+
     /* ======== EVENTS ======== */
 
     event MintLimit(uint256 limit);
@@ -124,6 +129,7 @@ contract Guardian is
     event Compound(address indexed from, address indexed to, uint256 amount);
     event Split(address indexed from, address indexed to, uint256 amount);
     event Claim(address indexed from, uint256 reward, uint256 dividends);
+    event Bond(address indexed to, uint256 amount);
 
     /* ======== INITIALIZATION ======== */
 
@@ -203,6 +209,11 @@ contract Guardian is
 
     /* ======== MODIFIERS ======== */
 
+    modifier onlyBond() {
+        if (msg.sender != addressProvider.getBond()) revert ONLY_BOND();
+        _;
+    }
+
     modifier update() {
         if (totalSupply > 0) {
             accTokenPerShare +=
@@ -215,6 +226,11 @@ contract Guardian is
     }
 
     /* ======== POLICY FUNCTIONS ======== */
+
+    function setAddressProvider(address _addressProvider) external onlyOwner {
+        if (_addressProvider == address(0)) revert INVALID_ADDRESS();
+        addressProvider = IAddressProvider(_addressProvider);
+    }
 
     function setMintLimit(uint256 limit) external onlyOwner {
         if (limit == 0) revert INVALID_AMOUNT();
@@ -628,6 +644,48 @@ contract Guardian is
         if (totalSupply > 0 && rewardAmount > 0) {
             dividendsPerShare += (rewardAmount * MULTIPLIER) / totalSupply;
         }
+    }
+
+    /* ======== BOND FUNCTIONS ======== */
+
+    function bond(
+        address account,
+        address feeToken,
+        uint256 amount
+    ) external onlyBond {
+        // burn Trireme from bond
+        TRIREME.burnFrom(_msgSender(), amount * pricePerGuardian);
+
+        // update reward
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(account);
+        rewardInfo.debt = accTokenPerShare * totalBalanceOf[account];
+        dividendsInfo.debt =
+            (dividendsPerShare * totalBalanceOf[account]) /
+            MULTIPLIER;
+
+        // pay txn fee
+        uint256 usdcFee = (txnFee *
+            10 ** IERC20Metadata(address(USDC)).decimals()) / MULTIPLIER;
+
+        if (dividendsInfo.pending >= usdcFee) {
+            dividendsInfo.pending -= usdcFee;
+            USDC.safeTransfer(treasury, usdcFee);
+        } else {
+            IERC20(feeToken).safeTransferFrom(
+                account,
+                treasury,
+                (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) /
+                    MULTIPLIER
+            );
+        }
+
+        // mint Guardian
+        _simpleMint(_msgSender(), amount);
+
+        emit Bond(account, amount);
     }
 
     /* ======== VIEW FUNCTIONS ======== */
