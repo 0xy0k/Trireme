@@ -659,27 +659,87 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
     }
 
     /**
+     *  @notice show all locking periods and discounts
+     *  @return lockingPeriods_ locking periods
+     *  @return lockingDiscounts_ locking discounts
+     */
+    function allLockingPeriodsDiscounts()
+        external
+        view
+        returns (
+            uint256[] memory lockingPeriods_,
+            uint256[] memory lockingDiscounts_
+        )
+    {
+        lockingPeriods_ = lockingPeriods;
+
+        uint256 length = lockingPeriods.length;
+        lockingDiscounts_ = new uint256[](length);
+
+        for (uint256 i = 0; i < length; i++) {
+            lockingDiscounts_[i] = lockingDiscounts[lockingPeriods[i]];
+        }
+    }
+
+    /**
      *  @notice show all bond infos for a particular owner
      *  @param _owner address
      *  @return bondInfos_ Bond[]
-     *  @return pendingPayouts_ uint256[]
+     *  @return rewardInfos_ uint256[]
+     *  @return dividendsInfos_ uint256[]
      */
     function allBondInfos(
         address _owner
     )
         external
         view
-        returns (Bond[] memory bondInfos_, uint256[] memory pendingPayouts_)
+        returns (
+            Bond[] memory bondInfos_,
+            uint256[] memory rewardInfos_,
+            uint256[] memory dividendsInfos_
+        )
     {
+        uint256 accTokenPerShare_ = accTokenPerShare;
+        uint256 dividendsPerShare_ = dividendsPerShare;
+
+        // calculate reward rate
+        {
+            IGuardian guardian = IGuardian(addressProvider.getGuardian());
+            uint256 totalGuardians = guardian.totalBalanceOf(address(this));
+            (uint256 reward, uint256 dividends) = guardian.pendingReward(
+                address(this)
+            );
+
+            reward -= (reward * guardianRewardFee) / MULTIPLIER;
+            dividends -= (dividends * guardianRewardFee) / MULTIPLIER;
+
+            accTokenPerShare_ += (reward * 1e18) / totalGuardians;
+            dividendsPerShare_ += (dividends * 1e18) / totalGuardians;
+        }
+
+        // return
         uint256 length = ownedDeposits[_owner].length();
         bondInfos_ = new Bond[](length);
-        pendingPayouts_ = new uint256[](length);
+        rewardInfos_ = new uint256[](length);
+        dividendsInfos_ = new uint256[](length);
 
         for (uint256 i = 0; i < length; i++) {
             uint256 depositId_ = ownedDeposits[_owner].at(i);
+            Bond memory info = bondInfo[depositId_];
+            RewardInfo memory rewardInfo = rewardInfoOf[depositId_];
+            RewardInfo memory dividendsInfo = dividendsInfoOf[depositId_];
 
             bondInfos_[i] = bondInfo[depositId_];
-            pendingPayouts_[i] = pendingPayoutFor(depositId_);
+            rewardInfos_[i] =
+                rewardInfo.pending +
+                (accTokenPerShare_ * info.guardians) /
+                1e18 -
+                rewardInfo.debt;
+            dividendsInfos_[i] =
+                dividendsInfo.pending +
+                (dividendsPerShare_ * info.guardians) /
+                1e18 -
+                dividendsInfo.debt;
         }
     }
 

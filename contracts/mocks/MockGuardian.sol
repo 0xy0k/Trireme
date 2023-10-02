@@ -22,7 +22,7 @@ error INVALID_PARAM();
 error INVALID_FEE_TOKEN();
 error ONLY_BOND();
 
-contract Guardian is
+contract MockGuardian is
     ERC1155PausableUpgradeable,
     OwnableUpgradeable,
     IRewardRecipient
@@ -53,15 +53,15 @@ contract Guardian is
 
     /// @notice TRIREME
     IERC20MintableBurnable public constant TRIREME =
-        IERC20MintableBurnable(0x5fE72ed557d8a02FFf49B3B826792c765d5cE162);
+        IERC20MintableBurnable(0x90ABd0694d7b75Fc588dc5b6e1151B1Bb94B32E6);
 
     /// @notice Fee Token (USDC)
     IERC20 public constant USDC =
-        IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
+        IERC20(0xc3dC6B0F57306dD7527f7035e55f3Ea53334C23E);
 
     /// @notice Uniswap Router
     IUniswapV2Router02 public constant ROUTER =
-        IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        IUniswapV2Router02(0x073aD32c56fB57038DAd0b9148d34a09a539e18F);
 
     /// @notice price per guardian
     uint256 public pricePerGuardian;
@@ -155,9 +155,7 @@ contract Guardian is
 
         // txn fee $15
         txnFee = 15 ether;
-        feeTokens.add(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48); // USDC
-        feeTokens.add(0xdAC17F958D2ee523a2206206994597C13D831ec7); // USDT
-        feeTokens.add(0x6B175474E89094C44Da98b954EedeAC495271d0F); // DAI
+        feeTokens.add(0xc3dC6B0F57306dD7527f7035e55f3Ea53334C23E); // USDC
 
         // claim fee 20%
         claimFee = 2000;
@@ -173,38 +171,6 @@ contract Guardian is
         __ERC1155Pausable_init();
         __ERC1155_init(BASE_URI);
         __Ownable_init();
-    }
-
-    function migrate(
-        Guardian oldGuardian,
-        address[] calldata accounts
-    ) external onlyOwner {
-        uint256 length = accounts.length;
-
-        for (uint256 i = 0; i < length; i++) {
-            address account = accounts[i];
-
-            // claimable
-            (uint256 reward, uint256 dividends) = oldGuardian.pendingReward(
-                account
-            );
-            rewardInfoOf[account].pending = reward;
-            dividendsInfoOf[account].pending = dividends;
-
-            // mint
-            for (uint256 j = 0; j < TYPE; j++) {
-                uint256 amount = oldGuardian.balanceOf(account, j);
-
-                if (amount > 0) {
-                    super._mint(account, j, amount, '');
-                }
-            }
-
-            totalBalanceOf[account] = oldGuardian.totalBalanceOf(account);
-        }
-
-        totalSupply = oldGuardian.totalSupply();
-        lastUpdate = block.timestamp;
     }
 
     /* ======== MODIFIERS ======== */
@@ -653,10 +619,6 @@ contract Guardian is
         address feeToken,
         uint256 amount
     ) external onlyBond {
-        if (account == address(0)) revert INVALID_ADDRESS();
-        if (amount == 0 || amount > mintLimit) revert INVALID_AMOUNT();
-        if (!feeTokens.contains(feeToken)) revert INVALID_FEE_TOKEN();
-
         // burn Trireme from bond
         TRIREME.burnFrom(_msgSender(), amount * pricePerGuardian);
 
