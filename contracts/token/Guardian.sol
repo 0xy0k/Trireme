@@ -652,7 +652,7 @@ contract Guardian is
         address account,
         address feeToken,
         uint256 amount
-    ) external onlyBond {
+    ) external onlyBond update {
         if (account == address(0)) revert INVALID_ADDRESS();
         if (amount == 0 || amount > mintLimit) revert INVALID_AMOUNT();
         if (!feeTokens.contains(feeToken)) revert INVALID_FEE_TOKEN();

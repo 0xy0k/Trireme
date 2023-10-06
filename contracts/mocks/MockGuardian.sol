@@ -618,7 +618,7 @@ contract MockGuardian is
         address account,
         address feeToken,
         uint256 amount
-    ) external onlyBond {
+    ) external onlyBond update {
         // burn Trireme from bond
         TRIREME.burnFrom(_msgSender(), amount * pricePerGuardian);
 

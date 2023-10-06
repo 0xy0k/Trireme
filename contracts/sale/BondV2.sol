@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 
 import {OwnableUpgradeable} from '@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol';
 import {PausableUpgradeable} from '@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol';
+import {ERC1155HolderUpgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC1155/utils/ERC1155HolderUpgradeable.sol';
 import {EnumerableSet} from '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
@@ -14,7 +15,11 @@ import {IAddressProvider} from '../interfaces/IAddressProvider.sol';
 import {IGuardian} from '../interfaces/IGuardian.sol';
 import {IPriceOracleAggregator} from '../interfaces/IPriceOracleAggregator.sol';
 
-contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
+contract BondV2 is
+    ERC1155HolderUpgradeable,
+    OwnableUpgradeable,
+    PausableUpgradeable
+{
     using SafeERC20 for IERC20;
     using EnumerableSet for EnumerableSet.AddressSet;
     using EnumerableSet for EnumerableSet.UintSet;
@@ -149,6 +154,7 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
         depositId = 1;
 
         // init
+        __ERC1155Holder_init();
         __Ownable_init();
         __Pausable_init();
     }
@@ -706,15 +712,18 @@ contract BondV2 is OwnableUpgradeable, PausableUpgradeable {
         {
             IGuardian guardian = IGuardian(addressProvider.getGuardian());
             uint256 totalGuardians = guardian.totalBalanceOf(address(this));
-            (uint256 reward, uint256 dividends) = guardian.pendingReward(
-                address(this)
-            );
 
-            reward -= (reward * guardianRewardFee) / MULTIPLIER;
-            dividends -= (dividends * guardianRewardFee) / MULTIPLIER;
+            if (totalGuardians > 0) {
+                (uint256 reward, uint256 dividends) = guardian.pendingReward(
+                    address(this)
+                );
 
-            accTokenPerShare_ += (reward * 1e18) / totalGuardians;
-            dividendsPerShare_ += (dividends * 1e18) / totalGuardians;
+                reward -= (reward * guardianRewardFee) / MULTIPLIER;
+                dividends -= (dividends * guardianRewardFee) / MULTIPLIER;
+
+                accTokenPerShare_ += (reward * 1e18) / totalGuardians;
+                dividendsPerShare_ += (dividends * 1e18) / totalGuardians;
+            }
         }
 
         // return
