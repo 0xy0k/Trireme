@@ -692,6 +692,28 @@ contract Guardian is
         emit Bond(account, amount);
     }
 
+    function sellRewardForBond(
+        address account,
+        uint256 dividends
+    ) external onlyBond update {
+        if (account == address(0)) revert INVALID_ADDRESS();
+        if (dividends == 0) revert INVALID_AMOUNT();
+
+        // update reward
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(account);
+        rewardInfo.debt = accTokenPerShare * totalBalanceOf[account];
+        dividendsInfo.debt =
+            (dividendsPerShare * totalBalanceOf[account]) /
+            MULTIPLIER;
+
+        // usdc to treasury
+        dividendsInfo.pending -= dividends;
+        USDC.safeTransfer(treasury, dividends);
+    }
+
     /* ======== VIEW FUNCTIONS ======== */
 
     function uri(

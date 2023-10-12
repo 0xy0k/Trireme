@@ -17,5 +17,7 @@ interface IGuardian {
 
     function bond(address account, address feeToken, uint256 amount) external;
 
+    function sellRewardForBond(address account, uint256 dividends) external;
+
     function claim() external;
 }

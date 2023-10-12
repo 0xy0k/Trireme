@@ -365,6 +365,76 @@ contract BondV2 is
     }
 
     /**
+     *  @notice deposit bond with dividends
+     *  @param _amount uint
+     *  @param _maxPrice uint
+     *  @param _lockingPeriod uint
+     *  @return uint
+     */
+    function depositWithDividends(
+        uint256 _amount,
+        uint256 _maxPrice,
+        uint256 _lockingPeriod
+    ) external whenNotPaused returns (uint256) {
+        if (_amount == 0) revert INVALID_AMOUNT();
+
+        uint256 discount = lockingDiscounts[_lockingPeriod];
+        if (discount == 0) revert INVALID_PERIOD();
+
+        uint256 priceInUSD = (bondPrice() * (MULTIPLIER - discount)) /
+            MULTIPLIER; // Stored in bond info
+        if (priceInUSD > _maxPrice) revert LIMIT_SLIPPAGE();
+
+        IGuardian guardian = IGuardian(addressProvider.getGuardian());
+        address principal = guardian.USDC();
+        uint256 payout = payoutFor(principal, _amount, discount); // payout to bonder is computed
+        if (payout < UNIT / 100) revert TOO_SMALL(); // must be > 0.01 trireme
+
+        // total remaining payout is increased
+        totalRemainingPayout = totalRemainingPayout + payout;
+
+        // total bonded value is increased
+        totalBondedValue = totalBondedValue + payout;
+        if (totalDepositedValue < totalBondedValue)
+            revert INSUFFICIENT_BALANCE();
+
+        // principal is transferred
+        guardian.sellRewardForBond(msg.sender, _amount);
+
+        totalPrincipals[principal] = totalPrincipals[principal] + _amount;
+
+        // depositor info is stored
+        bondInfo[depositId] = Bond({
+            depositId: depositId,
+            principal: principal,
+            amount: _amount,
+            payout: payout,
+            guardians: 0,
+            vesting: _lockingPeriod,
+            lastBlockAt: block.timestamp,
+            pricePaid: priceInUSD,
+            depositor: msg.sender
+        });
+
+        ownedDeposits[msg.sender].add(depositId);
+
+        // event
+        emit BondCreated(
+            depositId,
+            principal,
+            _amount,
+            payout,
+            block.timestamp + _lockingPeriod,
+            priceInUSD
+        );
+
+        // increase deposit index
+        depositId += 1;
+
+        return payout;
+    }
+
+    /**
      *  @notice redeem bond for user
      *  @param _depositId uint
      *  @return uint
