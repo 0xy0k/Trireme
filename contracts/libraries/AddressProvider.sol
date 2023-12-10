@@ -17,6 +17,10 @@ contract AddressProvider is OwnableUpgradeable, IAddressProvider {
     /// @notice address storage
     mapping(bytes32 => address) private _addresses;
 
+    bytes32 private constant OBELISK = 'OBELISK';
+    bytes32 private constant OPTION_TRIREME = 'OPTION_TRIREME';
+    bytes32 private constant FARMING = 'FARMING';
+
     /* ======== ERRORS ======== */
 
     error ZERO_ADDRESS();
@@ -67,6 +71,24 @@ contract AddressProvider is OwnableUpgradeable, IAddressProvider {
         _addresses[BOND] = bond;
     }
 
+    function setObelisk(address obelisk) external onlyOwner {
+        if (obelisk == address(0)) revert ZERO_ADDRESS();
+
+        _addresses[OBELISK] = obelisk;
+    }
+
+    function setOptionTrireme(address optionTrireme) external onlyOwner {
+        if (optionTrireme == address(0)) revert ZERO_ADDRESS();
+
+        _addresses[OPTION_TRIREME] = optionTrireme;
+    }
+
+    function setFarming(address farming) external onlyOwner {
+        if (farming == address(0)) revert ZERO_ADDRESS();
+
+        _addresses[FARMING] = farming;
+    }
+
     /* ======== VIEW FUNCTIONS ======== */
 
     function getTreasury() external view returns (address) {
@@ -87,5 +109,17 @@ contract AddressProvider is OwnableUpgradeable, IAddressProvider {
 
     function getBond() external view returns (address) {
         return _addresses[BOND];
+    }
+
+    function getObelisk() external view returns (address) {
+        return _addresses[OBELISK];
+    }
+
+    function getOptionTrireme() external view returns (address) {
+        return _addresses[OPTION_TRIREME];
+    }
+
+    function getFarming() external view returns (address) {
+        return _addresses[FARMING];
     }
 }

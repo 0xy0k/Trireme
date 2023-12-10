@@ -15,12 +15,15 @@ import {IAddressProvider} from '../interfaces/IAddressProvider.sol';
 import {IRewardRecipient} from '../interfaces/IRewardRecipient.sol';
 import {IUniswapV2Router02} from '../interfaces/IUniswapV2Router02.sol';
 import {IERC20MintableBurnable} from '../interfaces/IERC20MintableBurnable.sol';
+import {IPriceOracleAggregator} from '../interfaces/IPriceOracleAggregator.sol';
+import {IObelisk} from '../interfaces/IObelisk.sol';
 
 error INVALID_ADDRESS();
 error INVALID_AMOUNT();
 error INVALID_PARAM();
 error INVALID_FEE_TOKEN();
 error ONLY_BOND();
+error ONLY_OBELISK();
 
 contract Guardian is
     ERC1155PausableUpgradeable,
@@ -117,6 +120,12 @@ contract Guardian is
     /// @notice address provider
     IAddressProvider public addressProvider;
 
+    /// @notice tributeFee for Trireme (percentage)
+    uint256 public tributeFeeForTrireme;
+
+    /// @notice tributeFee for ETH (percentage)
+    uint256 public tributeFeeForETH;
+
     /* ======== EVENTS ======== */
 
     event MintLimit(uint256 limit);
@@ -130,6 +139,7 @@ contract Guardian is
     event Split(address indexed from, address indexed to, uint256 amount);
     event Claim(address indexed from, uint256 reward, uint256 dividends);
     event Bond(address indexed to, uint256 amount);
+    event TributeFee(uint256 tributeFeeForTrireme, uint256 tributeFeeForETH);
 
     /* ======== INITIALIZATION ======== */
 
@@ -175,42 +185,15 @@ contract Guardian is
         __Ownable_init();
     }
 
-    function migrate(
-        Guardian oldGuardian,
-        address[] calldata accounts
-    ) external onlyOwner {
-        uint256 length = accounts.length;
-
-        for (uint256 i = 0; i < length; i++) {
-            address account = accounts[i];
-
-            // claimable
-            (uint256 reward, uint256 dividends) = oldGuardian.pendingReward(
-                account
-            );
-            rewardInfoOf[account].pending = reward;
-            dividendsInfoOf[account].pending = dividends;
-
-            // mint
-            for (uint256 j = 0; j < TYPE; j++) {
-                uint256 amount = oldGuardian.balanceOf(account, j);
-
-                if (amount > 0) {
-                    super._mint(account, j, amount, '');
-                }
-            }
-
-            totalBalanceOf[account] = oldGuardian.totalBalanceOf(account);
-        }
-
-        totalSupply = oldGuardian.totalSupply();
-        lastUpdate = block.timestamp;
-    }
-
     /* ======== MODIFIERS ======== */
 
     modifier onlyBond() {
-        if (msg.sender != addressProvider.getBond()) revert ONLY_BOND();
+        if (msg.sender != _bond()) revert ONLY_BOND();
+        _;
+    }
+
+    modifier onlyObelisk() {
+        if (msg.sender != _obelisk()) revert ONLY_OBELISK();
         _;
     }
 
@@ -262,6 +245,19 @@ contract Guardian is
         claimFee = fee;
 
         emit ClaimFee(fee);
+    }
+
+    function setTributeFee(
+        uint256 feeForTrireme,
+        uint256 feeForETH
+    ) external onlyOwner {
+        if ((feeForTrireme + feeForETH) >= PRECISION / 2)
+            revert INVALID_AMOUNT();
+
+        tributeFeeForTrireme = feeForTrireme;
+        tributeFeeForETH = feeForETH;
+
+        emit TributeFee(feeForTrireme, feeForETH);
     }
 
     function addFeeTokens(address[] calldata tokens) external onlyOwner {
@@ -320,6 +316,34 @@ contract Guardian is
 
     /* ======== INTERNAL FUNCTIONS ======== */
 
+    function _trireme() internal view returns (address) {
+        return addressProvider.getTrireme();
+    }
+
+    function _bond() internal view returns (address) {
+        return addressProvider.getBond();
+    }
+
+    function _obelisk() internal view returns (address) {
+        return addressProvider.getObelisk();
+    }
+
+    function _treasury() internal view returns (address) {
+        return addressProvider.getTreasury();
+    }
+
+    function _viewPriceInUSD(address token) internal view returns (uint256) {
+        return
+            IPriceOracleAggregator(addressProvider.getPriceOracleAggregator())
+                .viewPriceInUSD(token);
+    }
+
+    function _getMultiplierOf(
+        address account
+    ) internal view returns (uint256, uint256) {
+        return IObelisk(addressProvider.getObelisk()).getMultiplierOf(account);
+    }
+
     function _min(uint256 a, uint256 b) internal pure returns (uint256) {
         return a < b ? a : b;
     }
@@ -357,7 +381,9 @@ contract Guardian is
 
         // Trireme
         rewardInfo = rewardInfoOf[account];
-        uint256 reward = accTokenPerShare * totalBalance - rewardInfo.debt;
+        (uint256 multiplier, uint256 precision) = _getMultiplierOf(account);
+        uint256 reward = ((accTokenPerShare * totalBalance - rewardInfo.debt) *
+            (precision + multiplier)) / precision;
         uint256 fee = (reward * claimFee) / PRECISION;
         rewardInfo.pending += reward - fee;
         if (fee > 0) {
@@ -590,7 +616,7 @@ contract Guardian is
         emit Split(from, to, amount);
     }
 
-    function claim() external update {
+    function claim() external payable update {
         address account = _msgSender();
         uint256 totalBalance = totalBalanceOf[account];
 
@@ -605,16 +631,44 @@ contract Guardian is
         rewardInfo.debt = accTokenPerShare * totalBalance;
         dividendsInfo.debt = (dividendsPerShare * totalBalance) / MULTIPLIER;
 
+        // tribute fee & claim percentage
+        uint256 claimPercentage;
+
+        if (msg.sender != _bond()) {
+            uint256 triremePriceInUSD = _viewPriceInUSD(_trireme());
+            uint256 ethPriceInUSD = _viewPriceInUSD(ROUTER.WETH());
+            uint256 ethAmountForFee = (rewardInfo.pending *
+                tributeFeeForETH *
+                triremePriceInUSD) / (ethPriceInUSD * PRECISION);
+
+            if (ethAmountForFee == 0 || ethAmountForFee <= msg.value) {
+                claimPercentage = PRECISION;
+            } else {
+                claimPercentage = (msg.value * PRECISION) / ethAmountForFee;
+
+                if (claimPercentage <= 2400) revert INVALID_AMOUNT();
+            }
+        } else {
+            claimPercentage = PRECISION;
+        }
+
+        if (msg.value > 0) {
+            (bool success, ) = payable(_treasury()).call{value: msg.value}('');
+            require(success);
+        }
+
         // transfer pending (Trireme)
-        uint256 reward = rewardInfo.pending;
+        uint256 reward = (rewardInfo.pending * claimPercentage) / PRECISION;
         if (reward > 0) {
-            rewardInfo.pending = 0;
+            unchecked {
+                rewardInfo.pending -= reward;
+            }
             TRIREME.mint(account, reward);
         }
 
         // transfer pending (USDC)
         uint256 dividends = _min(
-            dividendsInfo.pending,
+            (dividendsInfo.pending * claimPercentage) / PRECISION,
             USDC.balanceOf(address(this))
         );
         if (dividends > 0) {
@@ -714,6 +768,24 @@ contract Guardian is
         USDC.safeTransfer(treasury, dividends);
     }
 
+    /* ======== OBELISK FUNCTIONS ======== */
+
+    function updateRewardForObelisk(
+        address account
+    ) external onlyObelisk update {
+        if (account == address(0)) revert INVALID_ADDRESS();
+
+        // update reward
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(account);
+        rewardInfo.debt = accTokenPerShare * totalBalanceOf[account];
+        dividendsInfo.debt =
+            (dividendsPerShare * totalBalanceOf[account]) /
+            MULTIPLIER;
+    }
+
     /* ======== VIEW FUNCTIONS ======== */
 
     function uri(
@@ -733,32 +805,82 @@ contract Guardian is
 
     function pendingReward(
         address account
-    ) external view returns (uint256 reward, uint256 dividends) {
+    )
+        external
+        view
+        returns (
+            uint256 reward,
+            uint256 dividends,
+            uint256 feeInUSD,
+            uint256 triremeAmountForFee,
+            uint256 ethAmountForFee
+        )
+    {
         uint256 totalBalance = totalBalanceOf[account];
 
         if (totalBalance > 0) {
             // Trireme reward
-            RewardInfo memory rewardInfo = rewardInfoOf[account];
-            uint256 newAccTokenPerShare = accTokenPerShare +
-                rewardRate.rewardPerSec *
-                (block.timestamp - lastUpdate);
-            uint256 newReward = newAccTokenPerShare *
-                totalBalance -
-                rewardInfoOf[account].debt;
-            reward =
-                rewardInfo.pending +
-                newReward -
-                (newReward * claimFee) /
-                PRECISION;
+            {
+                RewardInfo memory rewardInfo = rewardInfoOf[account];
+                uint256 newAccTokenPerShare = accTokenPerShare +
+                    rewardRate.rewardPerSec *
+                    (block.timestamp - lastUpdate);
+                (uint256 multiplier, uint256 precision) = _getMultiplierOf(
+                    account
+                );
+                uint256 newReward = ((newAccTokenPerShare *
+                    totalBalance -
+                    rewardInfoOf[account].debt) * (precision + multiplier)) /
+                    precision;
+                reward =
+                    rewardInfo.pending +
+                    newReward -
+                    (newReward * claimFee) /
+                    PRECISION;
+            }
 
             // USDC reward
-            RewardInfo memory dividendsInfo = dividendsInfoOf[account];
-            dividends =
-                dividendsInfo.pending +
-                (dividendsPerShare * totalBalance) /
-                MULTIPLIER -
-                dividendsInfo.debt;
+            {
+                RewardInfo memory dividendsInfo = dividendsInfoOf[account];
+                dividends =
+                    dividendsInfo.pending +
+                    (dividendsPerShare * totalBalance) /
+                    MULTIPLIER -
+                    dividendsInfo.debt;
+            }
+
+            // Tribute Fee
+            {
+                uint256 triremePriceInUSD = _viewPriceInUSD(_trireme());
+                uint256 ethPriceInUSD = _viewPriceInUSD(ROUTER.WETH());
+
+                feeInUSD =
+                    (reward *
+                        (tributeFeeForTrireme + tributeFeeForETH) *
+                        triremePriceInUSD) /
+                    PRECISION;
+                triremeAmountForFee = (reward * tributeFeeForTrireme) / PRECISION;
+                ethAmountForFee =
+                    (reward * tributeFeeForETH * triremePriceInUSD) /
+                    (ethPriceInUSD * PRECISION);
+            }
         }
+    }
+
+    function getTributeFee()
+        external
+        view
+        returns (
+            uint256 tributeFeeForTrireme_,
+            uint256 tributeFeeForETH_,
+            uint256 triremePriceInUSD,
+            uint256 ethPriceInUSD
+        )
+    {
+        tributeFeeForTrireme_ = tributeFeeForTrireme;
+        tributeFeeForETH_ = tributeFeeForETH;
+        triremePriceInUSD = _viewPriceInUSD(_trireme());
+        ethPriceInUSD = _viewPriceInUSD(ROUTER.WETH());
     }
 
     uint256[49] private __gap;

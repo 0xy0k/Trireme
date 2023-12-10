@@ -20,4 +20,6 @@ interface IGuardian {
     function sellRewardForBond(address account, uint256 dividends) external;
 
     function claim() external;
+
+    function updateRewardForObelisk(address account) external;
 }

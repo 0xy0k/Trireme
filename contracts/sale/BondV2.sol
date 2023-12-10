@@ -215,6 +215,17 @@ contract BondV2 is
     }
 
     /**
+     * @notice set guardian reward fee
+     * @param _guardianRewardFee uint
+     */
+    function setGuardianRewardFee(
+        uint256 _guardianRewardFee
+    ) external onlyOwner {
+        if (_guardianRewardFee > MULTIPLIER) revert INVALID_AMOUNT();
+        guardianRewardFee = _guardianRewardFee;
+    }
+
+    /**
      * @notice add principals
      * @param _principals address[]
      */
@@ -489,7 +500,10 @@ contract BondV2 is
             if (dividendsInfo.pending > 0) {
                 IERC20(guardian.USDC()).safeTransfer(
                     _recipient,
-                    dividendsInfo.pending
+                    _min(
+                        dividendsInfo.pending,
+                        IERC20(guardian.USDC()).balanceOf(address(this))
+                    )
                 );
                 delete dividendsInfoOf[_depositId];
             }
@@ -617,6 +631,10 @@ contract BondV2 is
             }
             dividendsPerShare += (dividends * 1e18) / totalGuardians;
         }
+    }
+
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
     }
 
     /* ======== VIEW FUNCTIONS ======== */

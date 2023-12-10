@@ -12,4 +12,10 @@ interface IAddressProvider {
     function getPriceOracleAggregator() external view returns (address);
 
     function getBond() external view returns (address);
+
+    function getObelisk() external view returns (address);
+
+    function getOptionTrireme() external view returns (address);
+
+    function getFarming() external view returns (address);
 }
