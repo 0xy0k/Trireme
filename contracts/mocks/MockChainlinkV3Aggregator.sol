@@ -17,9 +17,10 @@ contract MockChainlinkV3Aggregator is IChainlinkV3Aggregator, Ownable {
     function latestRoundData()
         external
         view
-        returns (uint80, int256 answer, uint256, uint256, uint80)
+        returns (uint80, int256 answer, uint256, uint256 timestamp, uint80)
     {
         answer = price;
+        timestamp = block.timestamp;
     }
 
     function setDecimals(uint8 _decimals) external onlyOwner {

@@ -478,7 +478,7 @@ contract ERC721Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
         address _owner = positionOwner[_nftIndex];
         if (_owner != _account && _owner != address(0)) revert Unauthorized();
 
-        if (_amount == 0) revert InvalidAmount(_amount);
+        if (_amount == 0 && _owner != address(0)) revert InvalidAmount(_amount);
 
         uint256 _totalDebtAmount = totalDebtAmount;
         if (_totalDebtAmount + _amount > settings.borrowAmountCap)
@@ -534,8 +534,10 @@ contract ERC721Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
             _openPosition(_account, _nftIndex);
         }
 
-        //subtract the fee from the amount borrowed
-        stablecoin.mint(_account, _amount - _feeAmount);
+        if (_amount - _feeAmount > 0) {
+            //subtract the fee from the amount borrowed
+            stablecoin.mint(_account, _amount - _feeAmount);
+        }
 
         emit Borrowed(_account, _nftIndex, _amount, _useInsurance);
     }
