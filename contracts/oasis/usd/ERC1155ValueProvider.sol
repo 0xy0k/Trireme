@@ -85,7 +85,7 @@ contract ERC1155ValueProvider is
             _owner,
             _colAmount
         );
-        return _creditLimitRate.calculate(getNFTValueETH(_colAmount));
+        return _creditLimitRate.calculate(getNFTValueUSD(_colAmount));
     }
 
     /// @param _owner The owner address
@@ -99,11 +99,11 @@ contract ERC1155ValueProvider is
             _owner,
             _colAmount
         );
-        return _liquidationLimitRate.calculate(getNFTValueETH(_colAmount));
+        return _liquidationLimitRate.calculate(getNFTValueUSD(_colAmount));
     }
 
     /// @return The floor value for the collection, in ETH.
-    function getFloorETH() public view returns (uint256) {
+    function getFloorUSD() public view returns (uint256) {
         if (daoFloorOverride) {
             return overriddenFloorValueETH;
         }
@@ -125,8 +125,8 @@ contract ERC1155ValueProvider is
 
     /// @param _colAmount The collateral amount
     /// @return The value in ETH of the NFT at index `_nftIndex`, with 18 decimals.
-    function getNFTValueETH(uint256 _colAmount) public view returns (uint256) {
-        uint256 _floor = getFloorETH();
+    function getNFTValueUSD(uint256 _colAmount) public view returns (uint256) {
+        uint256 _floor = getFloorUSD();
         return _floor * _colAmount;
     }
 

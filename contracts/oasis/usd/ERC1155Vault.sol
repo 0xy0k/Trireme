@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC1155/IERC1155Upgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/token/ERC1155/IERC1155ReceiverUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
 
@@ -18,7 +19,11 @@ import {ERC1155ValueProvider} from './ERC1155ValueProvider.sol';
 /// can have an higher price set by the DAO. Users can also increase the price (and thus the borrow limit) of their
 /// NFT by submitting a governance proposal. If the proposal is approved the user can lock a percentage of the new price
 /// worth of Trireme to make it effective
-contract ERC1155Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
+contract ERC1155Vault is
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable,
+    IERC1155ReceiverUpgradeable
+{
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using SafeERC20Upgradeable for IStableCoin;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
@@ -586,5 +591,35 @@ contract ERC1155Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
         uint256 _totalDebt
     ) internal pure returns (uint256) {
         return _total == 0 ? _userDebt : (_total * _userDebt) / _totalDebt;
+    }
+
+    function onERC1155Received(
+        address operator,
+        address from,
+        uint256 id,
+        uint256 value,
+        bytes calldata data
+    ) external pure override returns (bytes4) {
+        return
+            bytes4(
+                keccak256(
+                    'onERC1155Received(address,address,uint256,uint256,bytes)'
+                )
+            );
+    }
+
+    function onERC1155BatchReceived(
+        address operator,
+        address from,
+        uint256[] calldata ids,
+        uint256[] calldata values,
+        bytes calldata data
+    ) external pure override returns (bytes4) {
+        return
+            bytes4(
+                keccak256(
+                    'onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)'
+                )
+            );
     }
 }
