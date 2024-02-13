@@ -33,21 +33,17 @@ contract ERC721Liquidator is OwnableUpgradeable {
         bool isWrapped;
     }
 
-    /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-    ERC721TriremeAuction public immutable AUCTION;
+    ERC721TriremeAuction public AUCTION;
 
     mapping(IERC20Upgradeable => OracleInfo) public stablecoinOracle;
     mapping(ERC721Vault => VaultInfo) public vaultInfo;
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor(address _auction) {
+    function initialize(address _auction) external initializer {
+        __Ownable_init();
+
         if (_auction == address(0)) revert ZeroAddress();
 
         AUCTION = ERC721TriremeAuction(_auction);
-    }
-
-    function initialize() external initializer {
-        __Ownable_init();
     }
 
     /// @notice Allows any address to liquidate multiple positions at once.
