@@ -593,6 +593,8 @@ contract ERC1155Vault is
         return _total == 0 ? _userDebt : (_total * _userDebt) / _totalDebt;
     }
 
+    // ERC1155 Receiver hooks
+
     function onERC1155Received(
         address operator,
         address from,

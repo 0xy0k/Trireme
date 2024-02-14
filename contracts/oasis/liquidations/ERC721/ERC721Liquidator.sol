@@ -58,7 +58,8 @@ contract ERC721Liquidator is OwnableUpgradeable {
     /// @param _nftVault The address of the NFTVault
     function liquidate(
         uint256[] memory _toLiquidate,
-        ERC721Vault _nftVault
+        ERC721Vault _nftVault,
+        address _auctionOwner
     ) external {
         VaultInfo memory _vaultInfo = vaultInfo[_nftVault];
         if (_vaultInfo.nftOrWrapper == address(0))
@@ -100,6 +101,7 @@ contract ERC721Liquidator is OwnableUpgradeable {
                         );
 
                     AUCTION.newAuction(
+                        _auctionOwner,
                         IERC721Upgradeable(_vaultInfo.nftOrWrapper),
                         _nftIndex,
                         _normalizedDebt
@@ -127,7 +129,8 @@ contract ERC721Liquidator is OwnableUpgradeable {
     /// @param _nftVault The address of the NFTVault
     function claimExpiredInsuranceNFT(
         uint256[] memory _toClaim,
-        ERC721Vault _nftVault
+        ERC721Vault _nftVault,
+        address _auctionOwner
     ) external {
         VaultInfo memory _vaultInfo = vaultInfo[_nftVault];
         if (_vaultInfo.nftOrWrapper == address(0))
@@ -159,6 +162,7 @@ contract ERC721Liquidator is OwnableUpgradeable {
                     );
 
                 AUCTION.newAuction(
+                    _auctionOwner,
                     IERC721Upgradeable(_vaultInfo.nftOrWrapper),
                     _nftIndex,
                     _normalizedDebt
@@ -201,6 +205,8 @@ contract ERC721Liquidator is OwnableUpgradeable {
 
         stablecoinOracle[_stablecoin] = OracleInfo(_oracle, _oracle.decimals());
     }
+
+    function claimETH() external onlyOwner {}
 
     /// @notice Allows the DAO to perform multiple calls using this contract (recovering funds/NFTs stuck in this contract)
     /// @param _targets The target addresses
