@@ -7,9 +7,8 @@ import '../../libraries/pendle/MarketMathCore.sol';
 import {IPPrincipalToken} from './IPPrincipalToken.sol';
 import {IPYieldToken} from './IPYieldToken.sol';
 import {IStandardizedYield} from './IStandardizedYield.sol';
-import {IPGauge} from './IPGauge.sol';
 
-interface IPMarket is IERC20, IPGauge {
+interface IPMarket is IERC20 {
     event Mint(
         address indexed receiver,
         uint256 netLpMinted,

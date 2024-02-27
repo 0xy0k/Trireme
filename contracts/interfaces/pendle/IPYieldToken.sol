@@ -3,10 +3,7 @@ pragma solidity 0.8.17;
 
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
-import { IRewardManager } from "./IRewardManager.sol";
-import { IPInterestManagerYT } from "./IPInterestManagerYT.sol";
-
-interface IPYieldToken is IERC20, IRewardManager, IPInterestManagerYT {
+interface IPYieldToken is IERC20 {
     event NewInterestIndex(uint256 indexed newIndex);
 
     event Mint(
