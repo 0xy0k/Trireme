@@ -289,6 +289,16 @@ abstract contract AbstractAssetVault is
     ) external onlyRole(SETTER_ROLE) {
         accrue();
 
+        if (
+            !_settings.debtInterestApr.isValid() ||
+            !_settings.debtInterestApr.isBelowOne()
+        ) revert RateLib.InvalidRate();
+
+        if (
+            !_settings.organizationFeeRate.isValid() ||
+            !_settings.organizationFeeRate.isBelowOne()
+        ) revert RateLib.InvalidRate();
+
         settings = _settings;
     }
 
