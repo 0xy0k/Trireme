@@ -1,7 +1,7 @@
 import '@typechain/hardhat';
 import '@nomiclabs/hardhat-ethers';
 import '@nomiclabs/hardhat-waffle';
-import '@nomiclabs/hardhat-etherscan';
+import "@nomicfoundation/hardhat-verify";
 import '@nomiclabs/hardhat-truffle5';
 import 'hardhat-contract-sizer';
 import 'solidity-coverage';
@@ -11,6 +11,7 @@ require('dotenv').config();
 
 const mainnetURL = process.env.MAIN_NET_API_URL;
 const goerliURL = process.env.GOERLI_NET_API_URL;
+const sepoliaURL = process.env.SEPOLIA_NET_API_URL;
 
 const mnemonic = process.env.MNEMONIC;
 
@@ -78,6 +79,15 @@ export default {
         count: numAddressesGenerated,
       },
     },
+    sepolia: {
+      url: sepoliaURL,
+      accounts: {
+        mnemonic,
+        path: mnemonicPathTestNet,
+        initialIndex: addressOffset,
+        count: numAddressesGenerated,
+      },
+    },
   },
   paths: {
     deploy: 'deploy',
@@ -86,5 +96,8 @@ export default {
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
+  },
+  sourcify: {
+    enabled: true
   },
 };
