@@ -34,12 +34,12 @@ contract GuardiansPharaohValueProvider is ERC1155ValueProvider {
         }
 
         uint256 mintAmount = Guardian(addressProvider.getGuardian())
-            .pricePerGuardian() * 100; // decimals 18
+            .pricePerGuardian(); // decimals 18
 
         uint256 triremePrice = PriceOracleAggregator(
             addressProvider.getPriceOracleAggregator()
-        ).viewPriceInUSD(addressProvider.getTrireme()); // decimals 6
+        ).viewPriceInUSD(addressProvider.getTrireme()); // decimals 8
 
-        return (mintAmount * triremePrice) / 1e6;
+        return (mintAmount * triremePrice) / 1e8;
     }
 }

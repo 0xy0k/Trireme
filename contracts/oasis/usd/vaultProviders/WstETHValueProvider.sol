@@ -37,6 +37,6 @@ contract WstETHValueProvider is ERC20ValueProvider {
             ? uint256(answer) / 10 ** (decimals - 18)
             : uint256(answer) * 10 ** (18 - decimals);
 
-        priceUSD = IWstETH(address(token)).getStETHByWstETH(1 ether) / 1 ether;
+        priceUSD = priceUSD * IWstETH(address(token)).getStETHByWstETH(1 ether) / 1 ether;
     }
 }
