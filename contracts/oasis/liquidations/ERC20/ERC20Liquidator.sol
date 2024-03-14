@@ -94,6 +94,11 @@ contract ERC20Liquidator is OwnableUpgradeable {
         uint256 debtAmount = debtFromStabilityPool[_vault][_user];
         debtFromStabilityPool[_vault][_user] = 0;
         totalDebtFromStabilityPool -= debtAmount;
+
+        _vaultInfo.stablecoin.approve(
+            address(_vaultInfo.stabilityPool),
+            _repayAmount
+        );
         _vaultInfo.stabilityPool.repayFromLiquidation(debtAmount, _repayAmount);
     }
 
