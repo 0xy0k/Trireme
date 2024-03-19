@@ -186,6 +186,12 @@ contract ERC721Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
         settings = _settings;
     }
 
+    function setValueProvider(
+        ERC721ValueProvider _valueProvider
+    ) external onlyRole(SETTER_ROLE) {
+        valueProvider = _valueProvider;
+    }
+
     /// @notice Returns the number of open positions
     /// @return The number of open positions
     function totalPositions() external view returns (uint256) {

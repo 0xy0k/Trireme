@@ -48,6 +48,12 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
         valueProvider = _valueProvider;
     }
 
+    function setValueProvider(
+        ERC1155ValueProvider _valueProvider
+    ) external onlyRole(SETTER_ROLE) {
+        valueProvider = _valueProvider;
+    }
+
     /// @dev See {addCollateral}
     function _addCollateral(
         address _account,

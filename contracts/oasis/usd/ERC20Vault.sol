@@ -40,6 +40,12 @@ contract ERC20Vault is AbstractAssetVault {
         valueProvider = _valueProvider;
     }
 
+    function setValueProvider(
+        ERC20ValueProvider _valueProvider
+    ) external onlyRole(SETTER_ROLE) {
+        valueProvider = _valueProvider;
+    }
+
     /// @dev See {addCollateral}
     function _addCollateral(
         address _account,
