@@ -40,6 +40,6 @@ contract GuardiansPharaohValueProvider is ERC1155ValueProvider {
             addressProvider.getPriceOracleAggregator()
         ).viewPriceInUSD(addressProvider.getTrireme()); // decimals 8
 
-        return (mintAmount * triremePrice) / 1e8;
+        return ((mintAmount * triremePrice) * 100) / 1e8;
     }
 }
