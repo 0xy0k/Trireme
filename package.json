@@ -13,6 +13,7 @@
     "deploy:goerli": "hardhat deploy --network goerli"
   },
   "devDependencies": {
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.10",
     "@nomiclabs/hardhat-ethers": "npm:hardhat-deploy-ethers@0.3.0-beta.12",
     "@nomiclabs/hardhat-waffle": "^2.0.1",
     "@openzeppelin/hardhat-upgrades": "^1.8.2",

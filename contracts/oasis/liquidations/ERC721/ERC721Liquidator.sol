@@ -196,6 +196,10 @@ contract ERC721Liquidator is OwnableUpgradeable, IERC721Liquidator {
         uint256 debtAmount = debtFromStabilityPool[nftVault][_nftIndex];
         debtFromStabilityPool[nftVault][_nftIndex] = 0;
         totalDebtFromStabilityPool -= debtAmount;
+        _vaultInfo.stablecoin.approve(
+            address(_vaultInfo.stabilityPool),
+            debtAmount
+        );
         _vaultInfo.stabilityPool.repayFromLiquidation(debtAmount, debtAmount);
     }
 

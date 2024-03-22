@@ -33,4 +33,8 @@ contract MockERC721 is ERC721 {
     function _baseURI() internal view override returns (string memory) {
         return baseURI;
     }
+
+    function tokenId() external view returns (uint) {
+        return nextTokenId;
+    }
 }
