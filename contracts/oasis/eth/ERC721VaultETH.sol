@@ -117,8 +117,6 @@ contract ERC721VaultETH is
     uint8 private constant ACTION_CLAIM_NFT = 101;
 
     IStableCoin public stablecoin;
-    /// @notice Chainlink ETH/USD price feed
-    IChainlinkV3Aggregator public ethAggregator;
     /// @notice The Trireme trait boost locker contract
     ERC721ValueProviderETH public valueProvider;
 
@@ -144,13 +142,11 @@ contract ERC721VaultETH is
     /// @param _nftContract The NFT contract address. It could also be the address of an helper contract
     /// if the target NFT isn't an ERC721 (CryptoPunks as an example)
     /// @param _valueProvider The NFT value provider
-    /// @param _ethAggregator Chainlink ETH/USD price feed address
     /// @param _settings Initial settings used by the contract
     function initialize(
         IStableCoin _stablecoin,
         IERC721Upgradeable _nftContract,
         ERC721ValueProviderETH _valueProvider,
-        IChainlinkV3Aggregator _ethAggregator,
         VaultSettings calldata _settings
     ) external initializer {
         __AccessControl_init();
@@ -182,7 +178,6 @@ contract ERC721VaultETH is
         ) revert RateLib.InvalidRate();
 
         stablecoin = _stablecoin;
-        ethAggregator = _ethAggregator;
         nftContract = _nftContract;
         valueProvider = _valueProvider;
 
