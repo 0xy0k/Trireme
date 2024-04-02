@@ -20,7 +20,7 @@ contract ERC20Vault is AbstractAssetVault {
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     using RateLib for RateLib.Rate;
     /// @notice The Trireme trait boost locker contract
-    ERC20ValueProvider public valueProvider;
+    address public valueProvider;
 
     IERC20Upgradeable public tokenContract;
 
@@ -32,16 +32,16 @@ contract ERC20Vault is AbstractAssetVault {
     function initialize(
         IStableCoin _stablecoin,
         IERC20Upgradeable _tokenContract,
-        ERC20ValueProvider _valueProvider,
+        address _valueProvider,
         VaultSettings calldata _settings
-    ) external initializer {
+    ) external virtual initializer {
         __initialize(_stablecoin, _settings);
         tokenContract = _tokenContract;
         valueProvider = _valueProvider;
     }
 
     function setValueProvider(
-        ERC20ValueProvider _valueProvider
+        address _valueProvider
     ) external onlyRole(SETTER_ROLE) {
         valueProvider = _valueProvider;
     }
@@ -130,11 +130,9 @@ contract ERC20Vault is AbstractAssetVault {
     function _getCreditLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view override returns (uint256) {
-        uint256 creditLimitUSD = valueProvider.getCreditLimitUSD(
-            _owner,
-            _colAmount
-        );
+    ) internal view virtual override returns (uint256) {
+        uint256 creditLimitUSD = ERC20ValueProvider(valueProvider)
+            .getCreditLimitUSD(_owner, _colAmount);
         return creditLimitUSD;
     }
 
@@ -145,11 +143,9 @@ contract ERC20Vault is AbstractAssetVault {
     function _getLiquidationLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view override returns (uint256) {
-        uint256 liquidationLimitUSD = valueProvider.getLiquidationLimitUSD(
-            _owner,
-            _colAmount
-        );
+    ) internal view virtual override returns (uint256) {
+        uint256 liquidationLimitUSD = ERC20ValueProvider(valueProvider)
+            .getLiquidationLimitUSD(_owner, _colAmount);
         return liquidationLimitUSD;
     }
 }

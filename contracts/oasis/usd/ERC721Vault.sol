@@ -117,7 +117,7 @@ contract ERC721Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
     /// @notice Chainlink ETH/USD price feed
     IChainlinkV3Aggregator public ethAggregator;
     /// @notice The Trireme trait boost locker contract
-    ERC721ValueProvider public valueProvider;
+    address public valueProvider;
 
     IERC721Upgradeable public nftContract;
 
@@ -146,10 +146,10 @@ contract ERC721Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
     function initialize(
         IStableCoin _stablecoin,
         IERC721Upgradeable _nftContract,
-        ERC721ValueProvider _valueProvider,
+        address _valueProvider,
         IChainlinkV3Aggregator _ethAggregator,
         VaultSettings calldata _settings
-    ) external initializer {
+    ) external virtual initializer {
         __AccessControl_init();
         __ReentrancyGuard_init();
 
@@ -187,7 +187,7 @@ contract ERC721Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
     }
 
     function setValueProvider(
-        ERC721ValueProvider _valueProvider
+        address _valueProvider
     ) external onlyRole(SETTER_ROLE) {
         valueProvider = _valueProvider;
     }
@@ -813,11 +813,9 @@ contract ERC721Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
     function _getCreditLimit(
         address _owner,
         uint256 _nftIndex
-    ) internal view returns (uint256) {
-        uint256 creditLimitETH = valueProvider.getCreditLimitETH(
-            _owner,
-            _nftIndex
-        );
+    ) internal view virtual returns (uint256) {
+        uint256 creditLimitETH = ERC721ValueProvider(valueProvider)
+            .getCreditLimitETH(_owner, _nftIndex);
         return _ethToUSD(creditLimitETH);
     }
 
@@ -828,11 +826,9 @@ contract ERC721Vault is AccessControlUpgradeable, ReentrancyGuardUpgradeable {
     function _getLiquidationLimit(
         address _owner,
         uint256 _nftIndex
-    ) internal view returns (uint256) {
-        uint256 liquidationLimitETH = valueProvider.getLiquidationLimitETH(
-            _owner,
-            _nftIndex
-        );
+    ) internal view virtual returns (uint256) {
+        uint256 liquidationLimitETH = ERC721ValueProvider(valueProvider)
+            .getLiquidationLimitETH(_owner, _nftIndex);
         return _ethToUSD(liquidationLimitETH);
     }
 
