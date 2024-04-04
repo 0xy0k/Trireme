@@ -41,7 +41,7 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
         uint256 _tokenIndex,
         address _valueProvider,
         VaultSettings calldata _settings
-    ) external initializer {
+    ) external virtual initializer {
         __initialize(_stablecoin, _settings);
         tokenContract = _tokenContract;
         tokenIndex = _tokenIndex;
@@ -156,7 +156,7 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
     function _getCreditLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view override returns (uint256) {
+    ) internal view virtual override returns (uint256) {
         uint256 creditLimitUSD = ERC1155ValueProvider(valueProvider)
             .getCreditLimitUSD(_owner, _colAmount);
         return creditLimitUSD;
@@ -169,7 +169,7 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
     function _getLiquidationLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view override returns (uint256) {
+    ) internal view virtual override returns (uint256) {
         uint256 liquidationLimitUSD = ERC1155ValueProvider(valueProvider)
             .getLiquidationLimitUSD(_owner, _colAmount);
         return liquidationLimitUSD;
