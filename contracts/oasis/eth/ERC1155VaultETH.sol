@@ -9,7 +9,7 @@ import {ERC1155ValueProviderETH} from './ERC1155ValueProviderETH.sol';
 import '../usd/ERC1155Vault.sol';
 
 /// @title ERC1155 lending vault
-/// @notice This contracts allows users to borrow TriremeUSD using ERC1155 as collateral.
+/// @notice This contracts allows users to borrow TriremeETH using ERC1155 as collateral.
 /// The floor price of the NFT collection is fetched using a chainlink oracle, while some other more valuable traits
 /// can have an higher price set by the DAO. Users can also increase the price (and thus the borrow limit) of their
 /// NFT by submitting a governance proposal. If the proposal is approved the user can lock a percentage of the new price
@@ -20,7 +20,7 @@ contract ERC1155VaultETH is ERC1155Vault {
     using RateLib for RateLib.Rate;
 
     /// @notice This function is only called once during deployment of the proxy contract. It's not called after upgrades.
-    /// @param _stablecoin TriUSD address
+    /// @param _stablecoin TriremeETH address
     /// @param _tokenContract The collateral token address
     /// @param _valueProvider The collateral token value provider
     /// @param _settings Initial settings used by the contract
