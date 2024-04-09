@@ -1,53 +1,51 @@
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signers';
-import { ethers, upgrades } from 'hardhat';
 import {
-  ERC20VaultETH,
-  MockToken,
+  ERC721ValueProvider,
+  ERC721VaultETH,
+  MockERC721,
   TriremeETH,
-  MockERC20ValueProviderETH,
 } from '../../types';
-import { expect } from 'chai';
 import { BigNumber, constants } from 'ethers';
-import { keccak256, parseEther } from 'ethers/lib/utils';
+import { parseEther } from 'ethers/lib/utils';
+import { ethers, upgrades, expect } from 'hardhat';
 import { evm_increaseTime } from '../helper';
 
-describe('ERC20 Vault ETH', () => {
+describe('ERC721 Vault ETH', () => {
   let owner: SignerWithAddress;
   let alice: SignerWithAddress;
 
-  let provider: MockERC20ValueProviderETH;
-  let vault: ERC20VaultETH;
-  let mockToken: MockToken;
+  let provider: ERC721ValueProvider;
+  let vault: ERC721VaultETH;
+  let mockNFT: MockERC721;
   let stablecoin: TriremeETH;
 
   const numerator = BigNumber.from(10);
   const denominator = BigNumber.from(1000);
-  const borrowAmountCap = parseEther('1000');
+  const borrowAmountCap = parseEther('10');
   const minBorrowAmount = parseEther('0.1');
 
-  const chainlinkETHAggregator = '0xEe9F2375b4bdF6387aa8265dD4FB8F16512A1d46';
-  const LIQUIDATOR_ROLE =
-    '0x5e17fc5225d4a099df75359ce1f405503ca79498a8dc46a7d583235a0ee45c16';
+  const chainlinkAzukiAggregator = '0xA8B9A447C73191744D5B79BcE864F343455E1150';
   const SETTER_ROLE =
     '0x61c92169ef077349011ff0b1383c894d86c5f0b41d986366b58a6cf31e93beda';
+  const LIQUIDATOR_ROLE =
+    '0x5e17fc5225d4a099df75359ce1f405503ca79498a8dc46a7d583235a0ee45c16';
 
   before(async () => {
     [owner, alice] = await ethers.getSigners();
 
-    const mockTokenFactory = await ethers.getContractFactory('MockToken');
-    mockToken = <MockToken>await mockTokenFactory.deploy('Mock', 'Mock');
+    const mockNftFactory = await ethers.getContractFactory('MockERC721');
+    mockNFT = <MockERC721>await mockNftFactory.deploy('Mock', 'Mock', '');
 
     const stablecoinFactory = await ethers.getContractFactory('TriremeETH');
     stablecoin = <TriremeETH>await stablecoinFactory.deploy();
 
     const providerFactory = await ethers.getContractFactory(
-      'MockERC20ValueProviderETH'
+      'ERC721ValueProvider'
     );
-    provider = <MockERC20ValueProviderETH>await upgrades.deployProxy(
+    provider = <ERC721ValueProvider>await upgrades.deployProxy(
       providerFactory,
       [
-        chainlinkETHAggregator,
-        mockToken.address,
+        chainlinkAzukiAggregator,
         {
           numerator: BigNumber.from(700),
           denominator,
@@ -62,11 +60,12 @@ describe('ERC20 Vault ETH', () => {
 
   describe('Initializing', () => {
     beforeEach(async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
-      vault = <ERC20VaultETH>await upgrades.deployProxy(factory, [
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      vault = <ERC721VaultETH>await upgrades.deployProxy(factory, [
         stablecoin.address,
-        mockToken.address,
+        mockNFT.address,
         provider.address,
+        chainlinkAzukiAggregator,
         {
           debtInterestApr: {
             numerator,
@@ -76,18 +75,28 @@ describe('ERC20 Vault ETH', () => {
             numerator,
             denominator,
           },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 0,
           borrowAmountCap,
           minBorrowAmount,
         },
       ]);
     });
-    it('should revert when debt interest apr is invalid', async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
+    it('should revert when debt interest rate is invalid', async () => {
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
       await expect(
         upgrades.deployProxy(factory, [
           stablecoin.address,
-          mockToken.address,
+          mockNFT.address,
           provider.address,
+          chainlinkAzukiAggregator,
           {
             debtInterestApr: {
               numerator,
@@ -97,6 +106,15 @@ describe('ERC20 Vault ETH', () => {
               numerator,
               denominator,
             },
+            insurancePurchaseRate: {
+              numerator,
+              denominator,
+            },
+            insuranceLiquidationPenaltyRate: {
+              numerator,
+              denominator,
+            },
+            insuranceRepurchaseTimeLimit: 0,
             borrowAmountCap,
             minBorrowAmount,
           },
@@ -105,8 +123,9 @@ describe('ERC20 Vault ETH', () => {
       await expect(
         upgrades.deployProxy(factory, [
           stablecoin.address,
-          mockToken.address,
+          mockNFT.address,
           provider.address,
+          chainlinkAzukiAggregator,
           {
             debtInterestApr: {
               numerator: numerator.add(denominator),
@@ -116,19 +135,29 @@ describe('ERC20 Vault ETH', () => {
               numerator,
               denominator,
             },
+            insurancePurchaseRate: {
+              numerator,
+              denominator,
+            },
+            insuranceLiquidationPenaltyRate: {
+              numerator,
+              denominator,
+            },
+            insuranceRepurchaseTimeLimit: 0,
             borrowAmountCap,
             minBorrowAmount,
           },
         ])
       ).to.be.revertedWith('InvalidRate');
     });
-    it('should revert when orgnization fee is invalid', async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
+    it('should revert when organization fee is invalid', async () => {
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
       await expect(
         upgrades.deployProxy(factory, [
           stablecoin.address,
-          mockToken.address,
+          mockNFT.address,
           provider.address,
+          chainlinkAzukiAggregator,
           {
             debtInterestApr: {
               numerator,
@@ -138,6 +167,15 @@ describe('ERC20 Vault ETH', () => {
               numerator,
               denominator: 0,
             },
+            insurancePurchaseRate: {
+              numerator,
+              denominator,
+            },
+            insuranceLiquidationPenaltyRate: {
+              numerator,
+              denominator,
+            },
+            insuranceRepurchaseTimeLimit: 0,
             borrowAmountCap,
             minBorrowAmount,
           },
@@ -146,8 +184,9 @@ describe('ERC20 Vault ETH', () => {
       await expect(
         upgrades.deployProxy(factory, [
           stablecoin.address,
-          mockToken.address,
+          mockNFT.address,
           provider.address,
+          chainlinkAzukiAggregator,
           {
             debtInterestApr: {
               numerator,
@@ -157,6 +196,137 @@ describe('ERC20 Vault ETH', () => {
               numerator: numerator.add(denominator),
               denominator,
             },
+            insurancePurchaseRate: {
+              numerator,
+              denominator,
+            },
+            insuranceLiquidationPenaltyRate: {
+              numerator,
+              denominator,
+            },
+            insuranceRepurchaseTimeLimit: 0,
+            borrowAmountCap,
+            minBorrowAmount,
+          },
+        ])
+      ).to.be.revertedWith('InvalidRate');
+    });
+    it('should revert when insurance purchase rate is invalid', async () => {
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      await expect(
+        upgrades.deployProxy(factory, [
+          stablecoin.address,
+          mockNFT.address,
+          provider.address,
+          chainlinkAzukiAggregator,
+          {
+            debtInterestApr: {
+              numerator,
+              denominator,
+            },
+            organizationFeeRate: {
+              numerator,
+              denominator,
+            },
+            insurancePurchaseRate: {
+              numerator,
+              denominator: 0,
+            },
+            insuranceLiquidationPenaltyRate: {
+              numerator,
+              denominator,
+            },
+            insuranceRepurchaseTimeLimit: 0,
+            borrowAmountCap,
+            minBorrowAmount,
+          },
+        ])
+      ).to.be.revertedWith('InvalidRate');
+      await expect(
+        upgrades.deployProxy(factory, [
+          stablecoin.address,
+          mockNFT.address,
+          provider.address,
+          chainlinkAzukiAggregator,
+          {
+            debtInterestApr: {
+              numerator,
+              denominator,
+            },
+            organizationFeeRate: {
+              numerator,
+              denominator,
+            },
+            insurancePurchaseRate: {
+              numerator: numerator.add(denominator),
+              denominator,
+            },
+            insuranceLiquidationPenaltyRate: {
+              numerator,
+              denominator,
+            },
+            insuranceRepurchaseTimeLimit: 0,
+            borrowAmountCap,
+            minBorrowAmount,
+          },
+        ])
+      ).to.be.revertedWith('InvalidRate');
+    });
+    it('should revert when insurance liquidation panelty rate is invalid', async () => {
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      await expect(
+        upgrades.deployProxy(factory, [
+          stablecoin.address,
+          mockNFT.address,
+          provider.address,
+          chainlinkAzukiAggregator,
+          {
+            debtInterestApr: {
+              numerator,
+              denominator,
+            },
+            organizationFeeRate: {
+              numerator,
+              denominator,
+            },
+            insurancePurchaseRate: {
+              numerator,
+              denominator,
+            },
+            insuranceLiquidationPenaltyRate: {
+              numerator,
+              denominator: 0,
+            },
+            insuranceRepurchaseTimeLimit: 0,
+            borrowAmountCap,
+            minBorrowAmount,
+          },
+        ])
+      ).to.be.revertedWith('InvalidRate');
+      await expect(
+        upgrades.deployProxy(factory, [
+          stablecoin.address,
+          mockNFT.address,
+          provider.address,
+          chainlinkAzukiAggregator,
+          {
+            debtInterestApr: {
+              numerator,
+              denominator,
+            },
+            organizationFeeRate: {
+              numerator,
+              denominator,
+            },
+            insurancePurchaseRate: {
+              numerator,
+              denominator,
+            },
+            insuranceLiquidationPenaltyRate: {
+              numerator: numerator.add(denominator),
+              denominator,
+            },
+            insuranceRepurchaseTimeLimit: 0,
             borrowAmountCap,
             minBorrowAmount,
           },
@@ -171,76 +341,18 @@ describe('ERC20 Vault ETH', () => {
       expect(settings.organizationFeeRate.numerator).to.be.equal(numerator);
       expect(settings.organizationFeeRate.denominator).to.be.equal(denominator);
     });
-    it.skip('should grant dao role to deployer', async () => {
-      const daoRole = keccak256('DAO_ROLE');
-      expect(await vault.hasRole(daoRole, owner.address)).to.be.true;
-    });
   });
-  describe('Add collateral', () => {
-    const collAmount = parseEther('1000');
-    beforeEach(async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
-      vault = <ERC20VaultETH>await upgrades.deployProxy(factory, [
-        stablecoin.address,
-        mockToken.address,
-        provider.address,
-        {
-          debtInterestApr: {
-            numerator,
-            denominator,
-          },
-          organizationFeeRate: {
-            numerator,
-            denominator,
-          },
-          borrowAmountCap,
-          minBorrowAmount,
-        },
-      ]);
-
-      await mockToken.mint(owner.address, collAmount);
-      await mockToken.approve(vault.address, collAmount);
-    });
-    it('should revert adding zero collateral', async () => {
-      await expect(vault.addCollateral(0)).to.be.revertedWith('InvalidAmount');
-    });
-    it('should be able to add collateral on the vault', async () => {
-      await expect(vault.addCollateral(collAmount)).to.be.emit(
-        vault,
-        'CollateralAdded'
-      );
-
-      const position = await vault.positions(owner.address);
-      expect(position.collateral).to.be.equal(collAmount);
-    });
-    it('should update position`s collateral amount', async () => {
-      await expect(vault.addCollateral(collAmount)).to.be.emit(
-        vault,
-        'CollateralAdded'
-      );
-
-      const position = await vault.positions(owner.address);
-      expect(position.collateral).to.be.equal(collAmount);
-    });
-    it('should update user indexes when its new user', async () => {
-      await vault.addCollateral(collAmount.div(2));
-      await vault.addCollateral(collAmount.div(2));
-      expect(await vault.totalUsersLength()).to.be.equal(1);
-
-      const users = await vault.totalUsers();
-      expect(users.includes(owner.address)).to.be.true;
-    });
-  });
-  describe('Borrow TriETH', () => {
-    const collAmount = parseEther('7000');
+  describe('Borrow', () => {
     const borrowAmount = parseEther('1');
+    let tokenId: BigNumber;
 
     beforeEach(async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
-      vault = <ERC20VaultETH>await upgrades.deployProxy(factory, [
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      vault = <ERC721VaultETH>await upgrades.deployProxy(factory, [
         stablecoin.address,
-        mockToken.address,
+        mockNFT.address,
         provider.address,
+        chainlinkAzukiAggregator,
         {
           debtInterestApr: {
             numerator,
@@ -250,61 +362,120 @@ describe('ERC20 Vault ETH', () => {
             numerator,
             denominator,
           },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 0,
           borrowAmountCap,
           minBorrowAmount,
         },
       ]);
-
       await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
 
-      await mockToken.mint(owner.address, collAmount);
-      await mockToken.approve(vault.address, collAmount);
-      await vault.addCollateral(collAmount);
+      await mockNFT.mint(owner.address, 1);
+      tokenId = await mockNFT.tokenId();
+      await mockNFT.approve(vault.address, tokenId);
     });
-    it('should revert when borrowing amount is zero', async () => {
-      await expect(vault.borrow(0)).to.be.revertedWith('MinBorrowAmount');
-    });
-    it('should revert borrowing when reach maximum borrow cap', async () => {
-      await expect(vault.borrow(borrowAmountCap.add(1))).to.be.revertedWith(
-        'DebtCapReached'
-      );
-    });
-    it('should revert when exceed credit limit', async () => {
-      const creditLimit = await vault.getCreditLimit(owner.address);
-      await expect(vault.borrow(creditLimit.add(1))).to.be.revertedWith(
-        'InvalidAmount'
-      );
-    });
-    it('should be able to borrow triremeUSD against his collateral on the vault', async () => {
-      await vault.borrow(borrowAmount);
-      expect(await stablecoin.balanceOf(owner.address)).to.be.closeTo(
-        borrowAmount,
-        borrowAmount.mul(numerator).div(denominator)
-      );
-    });
-    it('should cut orgnization fee in triremeUSD when borrowing', async () => {
-      const beforeBalance = await stablecoin.balanceOf(owner.address);
-      await vault.borrow(borrowAmount);
+    it('should be able to borrow stablecoins from the vault', async () => {
+      await expect(vault.borrow(tokenId, borrowAmount, true))
+        .to.be.emit(vault, 'Borrowed')
+        .emit(vault, 'PositionOpened');
+
+      const position = await vault.positions(tokenId);
+      expect(position.debtPortion).to.be.equal(borrowAmount);
+
+      expect(await mockNFT.ownerOf(tokenId)).to.be.equal(vault.address);
+
       const fee = borrowAmount.mul(numerator).div(denominator);
-
-      const afterBalance = await stablecoin.balanceOf(owner.address);
-
-      expect(afterBalance.sub(beforeBalance)).to.be.equal(
-        borrowAmount.sub(fee)
+      const insuranceFee = borrowAmount.mul(numerator).div(denominator);
+      expect(await stablecoin.balanceOf(owner.address)).to.be.equal(
+        borrowAmount.sub(fee).sub(insuranceFee)
       );
-      expect(await vault.totalFeeCollected()).to.be.equal(fee);
+      expect(await vault.positionOwner(tokenId)).to.be.equal(owner.address);
+      const positionIndexes = await vault.openPositionsIndexes();
+      expect(positionIndexes[0]).to.be.equal(tokenId);
+      expect(await vault.totalPositions()).to.be.equal(1);
+    });
+    it('should be able to borrow again for same collateral', async () => {
+      const balBefore = await stablecoin.balanceOf(owner.address);
+      await vault.borrow(tokenId, borrowAmount.div(2), false);
+      await vault.borrow(tokenId, borrowAmount.div(2), false);
+      const balAfter = await stablecoin.balanceOf(owner.address);
+
+      const fee = borrowAmount.mul(numerator).div(denominator);
+      expect(balAfter).to.be.equal(balBefore.add(borrowAmount).sub(fee));
+    });
+    it('should revert borrowing when exceed credit limit', async () => {
+      const creditLimit = await vault.getCreditLimit(owner.address, tokenId);
+      await expect(
+        vault.borrow(tokenId, creditLimit.add(1), true)
+      ).to.be.revertedWith('InvalidAmount');
+    });
+    it('should revert borrowing against invalid nft token id', async () => {
+      await expect(vault.borrow(0, borrowAmount, true)).to.be.revertedWith(
+        'ERC721: invalid token ID'
+      );
+    });
+    it('should revert borrowning again from not position owner', async () => {
+      await vault.borrow(tokenId, borrowAmount, true);
+      await expect(
+        vault.connect(alice).borrow(tokenId, borrowAmount, true)
+      ).to.be.revertedWith('Unauthorized');
+    });
+    it('should revert borrowning again zero amount', async () => {
+      await vault.borrow(tokenId, borrowAmount, true);
+      await expect(vault.borrow(tokenId, 0, true)).to.be.revertedWith(
+        'MinBorrowAmount'
+      );
+      await expect(vault.borrow(tokenId, 100, true)).to.be.revertedWith(
+        'MinBorrowAmount'
+      );
+    });
+    it.skip('should revert borrowing again for liquidated position', async () => {});
+    it('should revert borrowing when exceed borrow cap', async () => {
+      await vault.grantRole(SETTER_ROLE, owner.address);
+      await vault.setSettings({
+        debtInterestApr: {
+          numerator,
+          denominator,
+        },
+        organizationFeeRate: {
+          numerator,
+          denominator,
+        },
+        insurancePurchaseRate: {
+          numerator,
+          denominator,
+        },
+        insuranceLiquidationPenaltyRate: {
+          numerator,
+          denominator,
+        },
+        insuranceRepurchaseTimeLimit: 0,
+        borrowAmountCap: parseEther('0.1'),
+        minBorrowAmount,
+      });
+      await expect(
+        vault.borrow(tokenId, borrowAmount, true)
+      ).to.be.revertedWith('DebtCapReached');
     });
   });
   describe('Repay', () => {
-    const collAmount = parseEther('7000');
     const borrowAmount = parseEther('1');
+    let tokenId: BigNumber;
 
     beforeEach(async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
-      vault = <ERC20VaultETH>await upgrades.deployProxy(factory, [
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      vault = <ERC721VaultETH>await upgrades.deployProxy(factory, [
         stablecoin.address,
-        mockToken.address,
+        mockNFT.address,
         provider.address,
+        chainlinkAzukiAggregator,
         {
           debtInterestApr: {
             numerator,
@@ -314,120 +485,144 @@ describe('ERC20 Vault ETH', () => {
             numerator,
             denominator,
           },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 0,
           borrowAmountCap,
           minBorrowAmount,
         },
       ]);
-
       await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
 
-      await mockToken.mint(owner.address, collAmount);
-      await mockToken.approve(vault.address, collAmount);
-      await vault.addCollateral(collAmount);
-      await vault.borrow(borrowAmount);
+      await mockNFT.mint(owner.address, 1);
+      tokenId = await mockNFT.tokenId();
+      await mockNFT.approve(vault.address, tokenId);
+      await vault.borrow(tokenId, borrowAmount, false);
     });
-    it('should repay debt interest when repaying', async () => {
-      await evm_increaseTime(10);
-      const debt = await vault.calculateAdditionalInterest();
-      const debtOfOwner = await vault.getDebtInterest(owner.address);
-      expect(debt).to.be.equal(debtOfOwner);
-
-      await mockToken.mint(alice.address, collAmount);
-      await mockToken.connect(alice).approve(vault.address, collAmount);
-      await vault.connect(alice).addCollateral(collAmount);
-      await vault.connect(alice).borrow(borrowAmount);
-
-      await stablecoin.connect(alice).transfer(owner.address, debt);
-      await stablecoin.approve(vault.address, constants.MaxUint256);
-      await vault.repay(constants.MaxUint256);
-
-      const position = await vault.positions(owner.address);
-      expect(position.debtPortion).to.be.equal(constants.Zero);
-      expect(position.debtPrincipal).to.be.equal(constants.Zero);
-    });
-    it('should revert when repaying zero', async () => {
-      await expect(vault.repay(0)).to.be.revertedWith('InvalidAmount');
-    });
-    it('should revert repaying debt when there is no debt', async () => {
-      await mockToken.mint(alice.address, collAmount);
-      await mockToken.connect(alice).approve(vault.address, collAmount);
-      await vault.connect(alice).addCollateral(collAmount);
-
-      await expect(
-        vault.connect(alice).repay(constants.MaxUint256)
-      ).to.be.revertedWith('NoDebt');
-    });
-  });
-  describe('Withdraw Collateral', () => {
-    const collAmount = parseEther('70000');
-    const borrowAmount = parseEther('1');
-
-    beforeEach(async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
-      vault = <ERC20VaultETH>await upgrades.deployProxy(factory, [
-        stablecoin.address,
-        mockToken.address,
-        provider.address,
-        {
-          debtInterestApr: {
-            numerator,
-            denominator,
-          },
-          organizationFeeRate: {
-            numerator,
-            denominator,
-          },
-          borrowAmountCap,
-          minBorrowAmount,
-        },
-      ]);
-
-      await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
-
-      await mockToken.mint(owner.address, collAmount);
-      await mockToken.approve(vault.address, collAmount);
-      await vault.addCollateral(collAmount);
-      await vault.borrow(borrowAmount);
-    });
-    it('should revert withdraw when debt exceed new credit limit', async () => {
-      await evm_increaseTime(10);
-
-      await expect(vault.removeCollateral(collAmount)).to.be.revertedWith(
-        'InsufficientCollateral'
+    it('should revert repaying for non existing token id', async () => {
+      await expect(vault.repay(0, constants.MaxUint256)).to.be.revertedWith(
+        'ERC721: invalid token ID'
       );
     });
-    it('should be able to withdraw collaterals within healthy position', async () => {
-      const beforeCollBal = await mockToken.balanceOf(owner.address);
-      await vault.removeCollateral(collAmount.div(2));
-      const afterCollBal = await mockToken.balanceOf(owner.address);
-      expect(afterCollBal).to.be.equal(beforeCollBal.add(collAmount.div(2)));
-
-      const position = await vault.positions(owner.address);
-      expect(position.collateral).to.be.equal(collAmount.div(2));
+    it('should revert repaying zero', async () => {
+      await expect(vault.repay(tokenId, 0)).to.be.revertedWith('InvalidAmount');
     });
-    it('should remove user indexes when withdrawing all', async () => {
-      await mockToken.mint(alice.address, collAmount);
-      await mockToken.connect(alice).approve(vault.address, collAmount);
-      await vault.connect(alice).addCollateral(collAmount);
+    it('should revert repaying from not position owners', async () => {
+      await expect(
+        vault.connect(alice).repay(tokenId, constants.MaxUint256)
+      ).to.be.revertedWith('Unauthorized');
+    });
+    it.skip('should revert repaying for liquidated positions', async () => {});
+    it('should revert repaying for no debt positions', async () => {
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await vault.repay(tokenId, constants.MaxUint256);
+      await expect(
+        vault.repay(tokenId, constants.MaxUint256)
+      ).to.be.revertedWith('NoDebt');
+    });
+    it('should be able to repay debt', async () => {
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      const balBefore = await stablecoin.balanceOf(owner.address);
+      await expect(vault.repay(tokenId, constants.MaxUint256)).to.be.emit(
+        vault,
+        'Repaid'
+      );
+      const balAfter = await stablecoin.balanceOf(owner.address);
+      expect(balAfter).to.be.closeTo(
+        balBefore.sub(borrowAmount),
+        parseEther('0.01')
+      );
+      const position = await vault.positions(tokenId);
+      expect(position.debtPortion).to.be.equal(0);
+    });
+  });
+  describe('Close position', () => {
+    const borrowAmount = parseEther('1');
+    let tokenId: BigNumber;
 
-      const beforeUsers = await vault.totalUsers();
-      expect(beforeUsers.includes(alice.address)).to.be.true;
+    beforeEach(async () => {
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      vault = <ERC721VaultETH>await upgrades.deployProxy(factory, [
+        stablecoin.address,
+        mockNFT.address,
+        provider.address,
+        chainlinkAzukiAggregator,
+        {
+          debtInterestApr: {
+            numerator,
+            denominator,
+          },
+          organizationFeeRate: {
+            numerator,
+            denominator,
+          },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 0,
+          borrowAmountCap,
+          minBorrowAmount,
+        },
+      ]);
+      await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
 
-      await vault.connect(alice).removeCollateral(collAmount);
-      const afterUsers = await vault.totalUsers();
-      expect(afterUsers.includes(alice.address)).to.be.false;
+      await mockNFT.mint(owner.address, 1);
+      tokenId = await mockNFT.tokenId();
+      await mockNFT.approve(vault.address, tokenId);
+      await vault.borrow(tokenId, borrowAmount, false);
+    });
+    it('should revert closing position for non existing token id', async () => {
+      await expect(vault.closePosition(0)).to.be.revertedWith(
+        'ERC721: invalid token ID'
+      );
+    });
+    it('should revert closing position from not position owner', async () => {
+      await expect(
+        vault.connect(alice).closePosition(tokenId)
+      ).to.be.revertedWith('Unauthorized');
+    });
+    it.skip('should revert closing position for liquidated positions', async () => {});
+    it('should revert closing positions with debts', async () => {
+      await expect(vault.closePosition(tokenId)).to.be.revertedWith(
+        'NonZeroDebt'
+      );
+    });
+    it('should receive collateral nft back when closing position succeed', async () => {
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await vault.repay(tokenId, constants.MaxUint256);
+
+      await expect(vault.closePosition(tokenId)).to.be.emit(
+        vault,
+        'PositionClosed'
+      );
+      expect(await mockNFT.ownerOf(tokenId)).to.be.equal(owner.address);
+      expect(await vault.positionOwner(tokenId)).to.be.equal(
+        constants.AddressZero
+      );
     });
   });
   describe('Liquidate', () => {
-    const collAmount = parseEther('7000');
-    const borrowAmount = parseEther('0.9');
+    const borrowAmount = parseEther('1');
+    let tokenId: BigNumber;
 
     beforeEach(async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
-      vault = <ERC20VaultETH>await upgrades.deployProxy(factory, [
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      vault = <ERC721VaultETH>await upgrades.deployProxy(factory, [
         stablecoin.address,
-        mockToken.address,
+        mockNFT.address,
         provider.address,
+        chainlinkAzukiAggregator,
         {
           debtInterestApr: {
             numerator,
@@ -437,83 +632,112 @@ describe('ERC20 Vault ETH', () => {
             numerator,
             denominator,
           },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 0,
           borrowAmountCap,
           minBorrowAmount,
         },
       ]);
-
       await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
 
-      await mockToken.mint(owner.address, collAmount);
-      await mockToken.approve(vault.address, collAmount);
+      await mockNFT.mint(owner.address, 1);
+      tokenId = await mockNFT.tokenId();
+      await mockNFT.approve(vault.address, tokenId);
+      await vault.borrow(tokenId, borrowAmount, false);
 
-      await vault.addCollateral(collAmount);
-      await vault.borrow(borrowAmount);
       await vault.grantRole(LIQUIDATOR_ROLE, owner.address);
-
-      // Mint stablecoins for alice and transfer to owner to prepare liquidations
-      await mockToken.mint(alice.address, collAmount);
-      await mockToken.connect(alice).approve(vault.address, collAmount);
-      await vault.connect(alice).addCollateral(collAmount);
-      await vault.connect(alice).borrow(borrowAmount);
-
-      await stablecoin
-        .connect(alice)
-        .transfer(owner.address, await stablecoin.balanceOf(alice.address));
     });
-
-    it('should revert liquidation from non liquidator role granted address', async () => {
+    it('should revert liquidating from non liquidator role', async () => {
       await expect(
-        vault.connect(alice).liquidate(owner.address, alice.address)
+        vault.connect(alice).liquidate(tokenId, owner.address)
       ).to.be.revertedWith('AccessControl');
     });
-    it('should revert liquidation when the position in not liquidatable', async () => {
-      const price = await provider['getPriceETH()']();
-
-      // so healthy
-      await provider.setPriceETH(price.div(2));
-      await expect(
-        vault.liquidate(owner.address, owner.address)
-      ).to.be.revertedWith('InvalidPosition');
-      expect(await vault.isLiquidatable(owner.address)).to.be.false;
-
-      // exactly 90%
-      await provider.setPriceETH(price.div(7));
-      expect(await vault.isLiquidatable(owner.address)).to.be.true;
-      await provider.setPriceETH(0);
+    it('should revert liquidating for non existing token id', async () => {
+      await expect(vault.liquidate(0, owner.address)).to.be.revertedWith(
+        'ERC721: invalid token ID'
+      );
     });
-    it('should receive underlying collaterals when liquidating positions under liquidation rate', async () => {
+    it('should revert liquidating for invalid position id', async () => {
+      await expect(vault.liquidate(1, owner.address)).to.be.revertedWith(
+        'InvalidPosition'
+      );
+    });
+    it.skip('should revert liquidating for liquidated positions', async () => {});
+    it('should revert liquidating for not liquidatable positions', async () => {
+      expect(await vault.isLiquidatable(tokenId)).to.be.false;
+      await expect(vault.liquidate(tokenId, owner.address)).to.be.revertedWith(
+        'InvalidPosition'
+      );
+    });
+    it('should receive underlying nft when liquidating non-insured positions under water floor', async () => {
+      const price = await provider.getFloorETH();
+      await provider.overrideFloor(price.div(1000));
+      expect(await vault.isLiquidatable(tokenId)).to.be.true;
+
       await stablecoin.approve(vault.address, constants.MaxUint256);
-
-      const price = await provider['getPriceETH()']();
-      await provider.setPriceETH(price.div(8));
-      expect(await vault.isLiquidatable(owner.address)).to.be.true;
-
-      const collBalBefore = await mockToken.balanceOf(owner.address);
-      const position = await vault.positions(owner.address);
-      await expect(vault.liquidate(owner.address, owner.address)).to.be.emit(
+      await expect(vault.liquidate(tokenId, owner.address)).to.be.emit(
         vault,
         'Liquidated'
       );
 
-      const collBalAfter = await mockToken.balanceOf(owner.address);
-      expect(collBalAfter).to.be.equal(collBalBefore.add(position.collateral));
+      const position = await vault.positions(tokenId);
 
-      const totalUsers = await vault.totalUsers();
-      expect(totalUsers.includes(owner.address)).to.be.false;
-      await provider.setPriceETH(0);
+      expect(await mockNFT.ownerOf(tokenId)).to.be.equal(owner.address);
+      expect(position.debtPortion).to.be.equal(0);
+      expect(await vault.positionOwner(tokenId)).to.be.equal(
+        constants.AddressZero
+      );
+      await provider.disableFloorOverride();
+    });
+    it('should list underlying nft in auction when liquidating insured positions under water floor', async () => {
+      await mockNFT.mint(owner.address, 1);
+      tokenId = await mockNFT.tokenId();
+      await mockNFT.approve(vault.address, tokenId);
+      await vault.borrow(tokenId, borrowAmount, true);
+
+      const price = await provider.getFloorETH();
+      await provider.overrideFloor(price.div(1000));
+      expect(await vault.isLiquidatable(tokenId)).to.be.true;
+
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await expect(vault.liquidate(tokenId, owner.address)).to.be.emit(
+        vault,
+        'Liquidated'
+      );
+      expect(await mockNFT.ownerOf(tokenId)).to.be.equal(vault.address);
+
+      const position = await vault.positions(tokenId);
+      expect(position.liquidator).to.be.equal(owner.address);
+      expect(position.liquidatedAt).to.be.gt(0);
+      await provider.disableFloorOverride();
     });
   });
-  describe('Privilege Actions', () => {
-    const collAmount = parseEther('7000');
+  describe('Repurchase', () => {
     const borrowAmount = parseEther('1');
+    let tokenId: BigNumber;
+    let liquidatablePrice: BigNumber;
+
+    before(async () => {
+      await provider.disableFloorOverride();
+      const price = await provider.getFloorETH();
+      liquidatablePrice = price.div(1000);
+    });
 
     beforeEach(async () => {
-      const factory = await ethers.getContractFactory('ERC20VaultETH');
-      vault = <ERC20VaultETH>await upgrades.deployProxy(factory, [
+      await provider.disableFloorOverride();
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      vault = <ERC721VaultETH>await upgrades.deployProxy(factory, [
         stablecoin.address,
-        mockToken.address,
+        mockNFT.address,
         provider.address,
+        chainlinkAzukiAggregator,
         {
           debtInterestApr: {
             numerator,
@@ -523,17 +747,223 @@ describe('ERC20 Vault ETH', () => {
             numerator,
             denominator,
           },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 100,
           borrowAmountCap,
           minBorrowAmount,
         },
       ]);
-
       await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
 
-      await mockToken.mint(owner.address, collAmount);
-      await mockToken.approve(vault.address, collAmount);
-      await vault.addCollateral(collAmount);
-      await vault.borrow(borrowAmount);
+      await mockNFT.mint(owner.address, 1);
+      tokenId = await mockNFT.tokenId();
+      await mockNFT.approve(vault.address, tokenId);
+      await vault.borrow(tokenId, borrowAmount, true);
+    });
+    it('should revert repurchasing for non existing token id', async () => {
+      await expect(vault.repurchase(0, borrowAmount)).to.be.revertedWith(
+        'ERC721: invalid token ID'
+      );
+    });
+    it('should revert repurchasing from non position owner', async () => {
+      await expect(
+        vault.connect(alice).repurchase(tokenId, borrowAmount)
+      ).to.be.revertedWith('Unauthorized');
+    });
+    it('should revert repurchasing for not liquidated positions', async () => {
+      const position = await vault.positions(tokenId);
+      expect(position.liquidatedAt).to.be.equal(0);
+      await expect(vault.repurchase(tokenId, borrowAmount)).to.be.revertedWith(
+        'InvalidPosition'
+      );
+    });
+    it('should revert repurchasing when expired', async () => {
+      await provider.overrideFloor(liquidatablePrice);
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await vault.grantRole(LIQUIDATOR_ROLE, owner.address);
+      await vault.liquidate(tokenId, owner.address);
+
+      await evm_increaseTime(101);
+      await expect(vault.repurchase(tokenId, borrowAmount)).to.be.revertedWith(
+        'PositionInsuranceExpired'
+      );
+    });
+    it('should revert repurchasing with zero repay amount', async () => {
+      await provider.overrideFloor(liquidatablePrice);
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await vault.grantRole(LIQUIDATOR_ROLE, owner.address);
+      await vault.liquidate(tokenId, owner.address);
+
+      const position = await vault.positions(tokenId);
+      await expect(vault.repurchase(tokenId, 0)).to.be.revertedWith(
+        'InvalidAmount'
+      );
+      await expect(
+        vault.repurchase(tokenId, position.debtAmountForRepurchase.add(100))
+      ).to.be.emit(vault, 'LiquidationRepayment');
+    });
+    it('should be able to repurchase collateral nft within insurance window', async () => {
+      await provider.overrideFloor(liquidatablePrice);
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await vault.grantRole(LIQUIDATOR_ROLE, owner.address);
+      await vault.liquidate(tokenId, owner.address);
+      await provider.disableFloorOverride();
+
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      const position = await vault.positions(tokenId);
+      await expect(
+        vault.repurchase(tokenId, position.debtAmountForRepurchase.div(2))
+      ).to.be.emit(vault, 'LiquidationRepayment');
+    });
+  });
+  describe('Claim Expired NFT', () => {
+    const borrowAmount = parseEther('1');
+    let tokenId: BigNumber;
+    let liquidatablePrice: BigNumber;
+
+    before(async () => {
+      await provider.disableFloorOverride();
+      const price = await provider.getFloorETH();
+      liquidatablePrice = price.div(1000);
+    });
+
+    beforeEach(async () => {
+      await provider.disableFloorOverride();
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      vault = <ERC721VaultETH>await upgrades.deployProxy(factory, [
+        stablecoin.address,
+        mockNFT.address,
+        provider.address,
+        chainlinkAzukiAggregator,
+        {
+          debtInterestApr: {
+            numerator,
+            denominator,
+          },
+          organizationFeeRate: {
+            numerator,
+            denominator,
+          },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 100,
+          borrowAmountCap,
+          minBorrowAmount,
+        },
+      ]);
+      await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
+
+      await mockNFT.mint(owner.address, 1);
+      tokenId = await mockNFT.tokenId();
+      await mockNFT.approve(vault.address, tokenId);
+      await vault.borrow(tokenId, borrowAmount, true);
+    });
+    it('should revert claiming for non existing token id', async () => {
+      await expect(
+        vault.claimExpiredInsuranceNFT(0, owner.address)
+      ).to.be.revertedWith('ERC721: invalid token ID');
+    });
+    it('should revert claiming for not deposited nft', async () => {
+      await expect(
+        vault.connect(alice).claimExpiredInsuranceNFT(1, owner.address)
+      ).to.be.revertedWith('InvalidPosition');
+    });
+    it('should revert claiming for not liquidated position', async () => {
+      await expect(
+        vault.claimExpiredInsuranceNFT(tokenId, owner.address)
+      ).to.be.revertedWith('InvalidPosition');
+    });
+    it('should revert claiming for not expired position', async () => {
+      await provider.overrideFloor(liquidatablePrice);
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await vault.grantRole(LIQUIDATOR_ROLE, owner.address);
+      await vault.liquidate(tokenId, owner.address);
+      await provider.disableFloorOverride();
+
+      await expect(
+        vault.claimExpiredInsuranceNFT(tokenId, owner.address)
+      ).to.be.revertedWith('PositionInsuranceNotExpired');
+    });
+    it('should revert claiming from not liquidator', async () => {
+      await provider.overrideFloor(liquidatablePrice);
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await vault.grantRole(LIQUIDATOR_ROLE, owner.address);
+      await vault.liquidate(tokenId, owner.address);
+      await provider.disableFloorOverride();
+
+      await evm_increaseTime(101);
+
+      await expect(
+        vault.connect(alice).claimExpiredInsuranceNFT(tokenId, owner.address)
+      ).to.be.revertedWith('Unauthorized');
+    });
+    it('should be able to claim expired insured nft', async () => {
+      await provider.overrideFloor(liquidatablePrice);
+      await stablecoin.approve(vault.address, constants.MaxUint256);
+      await vault.grantRole(LIQUIDATOR_ROLE, owner.address);
+      await vault.liquidate(tokenId, owner.address);
+      await provider.disableFloorOverride();
+
+      await evm_increaseTime(101);
+
+      await expect(
+        vault.claimExpiredInsuranceNFT(tokenId, owner.address)
+      ).to.be.emit(vault, 'InsuranceExpired');
+      expect(await mockNFT.ownerOf(tokenId)).to.be.equal(owner.address);
+    });
+  });
+  describe('Privilege Actions', () => {
+    const borrowAmount = parseEther('1');
+    let tokenId: BigNumber;
+
+    beforeEach(async () => {
+      const factory = await ethers.getContractFactory('ERC721VaultETH');
+      vault = <ERC721VaultETH>await upgrades.deployProxy(factory, [
+        stablecoin.address,
+        mockNFT.address,
+        provider.address,
+        chainlinkAzukiAggregator,
+        {
+          debtInterestApr: {
+            numerator,
+            denominator,
+          },
+          organizationFeeRate: {
+            numerator,
+            denominator,
+          },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 0,
+          borrowAmountCap,
+          minBorrowAmount,
+        },
+      ]);
+      await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
+
+      await mockNFT.mint(owner.address, 1);
+      tokenId = await mockNFT.tokenId();
+      await mockNFT.approve(vault.address, tokenId);
+      await vault.borrow(tokenId, borrowAmount, false);
     });
     it('should revert collecting fee from non dao admin', async () => {
       await expect(vault.connect(alice).collect()).to.be.revertedWith(
@@ -550,16 +980,17 @@ describe('ERC20 Vault ETH', () => {
       expect(balAfter).to.be.gt(balBefore.add(fee));
     });
     it('dao admin should be able to rescue tokens locked in vault', async () => {
-      await mockToken.mint(vault.address, collAmount);
+      const stablecoinBal = await stablecoin.balanceOf(owner.address);
+      await stablecoin.transfer(vault.address, stablecoinBal);
 
       await expect(
-        vault.connect(alice).rescueToken(mockToken.address, collAmount)
+        vault.connect(alice).rescueToken(stablecoin.address, stablecoinBal)
       ).to.be.revertedWith('AccessControl');
 
-      const beforeBal = await mockToken.balanceOf(owner.address);
-      await vault.rescueToken(mockToken.address, collAmount);
-      const afterBal = await mockToken.balanceOf(owner.address);
-      expect(afterBal).to.be.equal(beforeBal.add(collAmount));
+      const beforeBal = await stablecoin.balanceOf(owner.address);
+      await vault.rescueToken(stablecoin.address, stablecoinBal);
+      const afterBal = await stablecoin.balanceOf(owner.address);
+      expect(afterBal).to.be.equal(beforeBal.add(stablecoinBal));
     });
     it('dao admin should be able to update vault settings', async () => {
       await expect(
@@ -572,6 +1003,15 @@ describe('ERC20 Vault ETH', () => {
             numerator,
             denominator,
           },
+          insurancePurchaseRate: {
+            numerator,
+            denominator,
+          },
+          insuranceLiquidationPenaltyRate: {
+            numerator,
+            denominator,
+          },
+          insuranceRepurchaseTimeLimit: 0,
           borrowAmountCap,
           minBorrowAmount,
         })
@@ -587,6 +1027,15 @@ describe('ERC20 Vault ETH', () => {
           numerator,
           denominator,
         },
+        insurancePurchaseRate: {
+          numerator,
+          denominator,
+        },
+        insuranceLiquidationPenaltyRate: {
+          numerator,
+          denominator,
+        },
+        insuranceRepurchaseTimeLimit: 0,
         borrowAmountCap,
         minBorrowAmount,
       });

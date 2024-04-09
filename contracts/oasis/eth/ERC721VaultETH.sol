@@ -37,8 +37,9 @@ contract ERC721VaultETH is ERC721Vault {
         IStableCoin _stablecoin,
         IERC721Upgradeable _nftContract,
         address _valueProvider,
+        IChainlinkV3Aggregator,
         VaultSettings calldata _settings
-    ) external initializer {
+    ) external override initializer {
         __AccessControl_init();
         __ReentrancyGuard_init();
 
