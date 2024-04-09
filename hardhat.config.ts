@@ -63,12 +63,7 @@ export default {
     },
     mainnet: {
       url: mainnetURL,
-      accounts: {
-        mnemonic,
-        path: mnemonicPathMainNet,
-        initialIndex: addressOffset,
-        count: numAddressesGenerated,
-      },
+      accounts: [process.env.PRIVATE_KEY!],
     },
     goerli: {
       url: goerliURL,
