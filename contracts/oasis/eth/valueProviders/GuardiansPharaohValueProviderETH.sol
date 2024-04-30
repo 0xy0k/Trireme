@@ -42,14 +42,11 @@ contract GuardiansPharaohValueProviderETH is ERC1155ValueProviderETH {
 
         uint priceInUSD = ((mintAmount * triremePrice) * 100) / 1e8;
 
-        (, int256 answer, , uint256 timestamp, ) = aggregator.latestRoundData();
-        if (answer == 0 || timestamp == 0) revert InvalidOracleResults();
+        (, int256 ethPriceInUSD, , uint256 timestamp, ) = aggregator
+            .latestRoundData();
+        if (ethPriceInUSD == 0 || timestamp == 0) revert InvalidOracleResults();
         uint8 decimals = aggregator.decimals();
 
-        uint ethPriceInUSD = decimals > 18
-            ? uint256(answer) / 10 ** (decimals - 18)
-            : uint256(answer) * 10 ** (18 - decimals);
-
-        return (priceInUSD * 1e18) / ethPriceInUSD;
+        return (priceInUSD * (10 ** decimals)) / uint(ethPriceInUSD);
     }
 }
