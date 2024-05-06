@@ -433,14 +433,14 @@ contract Guardian is
         if (dividendsInfo.pending >= usdcFee) {
             dividendsInfo.pending -= usdcFee;
 
-            USDC.approve(address(treasury), usdcFee);
-            zap.zapInToken(address(USDC), usdcFee, treasury);
+            USDC.approve(address(zap), usdcFee);
+            zap.zapInToken(address(USDC), usdcFee, lpFeeReceiver);
         } else {
             uint fee = (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) /
                 MULTIPLIER;
             IERC20(feeToken).safeTransferFrom(_msgSender(), address(this), fee);
-            IERC20(feeToken).approve(address(treasury), fee);
-            zap.zapInToken(feeToken, fee, treasury);
+            IERC20(feeToken).approve(address(zap), fee);
+            zap.zapInToken(feeToken, fee, lpFeeReceiver);
         }
 
         _simpleMint(to, amount);
@@ -754,14 +754,14 @@ contract Guardian is
         if (dividendsInfo.pending >= usdcFee) {
             dividendsInfo.pending -= usdcFee;
 
-            USDC.approve(address(treasury), usdcFee);
-            zap.zapInToken(address(USDC), usdcFee, treasury);
+            USDC.approve(address(zap), usdcFee);
+            zap.zapInToken(address(USDC), usdcFee, lpFeeReceiver);
         } else {
             uint fee = (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) /
                 MULTIPLIER;
             IERC20(feeToken).safeTransferFrom(_msgSender(), address(this), fee);
-            IERC20(feeToken).approve(address(treasury), fee);
-            zap.zapInToken(feeToken, fee, treasury);
+            IERC20(feeToken).approve(address(zap), fee);
+            zap.zapInToken(feeToken, fee, lpFeeReceiver);
         }
 
         // mint Guardian
@@ -790,8 +790,8 @@ contract Guardian is
         // usdc to treasury
         dividendsInfo.pending -= dividends;
 
-        USDC.approve(address(treasury), dividends);
-        zap.zapInToken(address(USDC), dividends, treasury);
+        USDC.approve(address(zap), dividends);
+        zap.zapInToken(address(USDC), dividends, lpFeeReceiver);
     }
 
     /* ======== OBELISK FUNCTIONS ======== */
