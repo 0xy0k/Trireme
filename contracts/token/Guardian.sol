@@ -146,6 +146,7 @@ contract Guardian is
     event TributeFee(uint256 tributeFeeForTrireme, uint256 tributeFeeForETH);
     event Zap(address zap);
     event LpFeeReceiver(address receiver);
+    event PricePerGuardian(uint price);
 
     /* ======== INITIALIZATION ======== */
 
@@ -280,6 +281,14 @@ contract Guardian is
         lpFeeReceiver = receiver;
 
         emit LpFeeReceiver(receiver);
+    }
+
+    function setPricePerGuardian(uint price) external onlyOwner {
+        if (price == 0) revert INVALID_AMOUNT();
+
+        pricePerGuardian = price;
+
+        emit PricePerGuardian(price);
     }
 
     function addFeeTokens(address[] calldata tokens) external onlyOwner {
