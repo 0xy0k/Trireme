@@ -298,9 +298,11 @@ contract Zap is
             block.timestamp
         );
 
+        uint ethBal = address(this).balance;
+
         // Swap half in tri and add liquidity
         address trireme = addressProvider.getTrireme();
-        uint256 sellAmount = _getRequiredSellAmount();
+        uint256 sellAmount = _getRequiredSellAmount(ethBal);
 
         path[0] = router.WETH();
         path[1] = trireme;
@@ -309,7 +311,7 @@ contract Zap is
         }(0, path, address(this), block.timestamp);
 
         (amountTrireme, amountETH, liquidity) = router.addLiquidityETH{
-            value: address(this).balance - sellAmount
+            value: ethBal - sellAmount
         }(
             trireme,
             IERC20(trireme).balanceOf(address(this)),
@@ -318,7 +320,7 @@ contract Zap is
             receiver,
             block.timestamp
         );
-        uint256 remainingETH = address(this).balance - amountETH - sellAmount;
+        uint256 remainingETH = ethBal - amountETH - sellAmount;
         if (remainingETH > 0) {
             payable(receiver).call{value: remainingETH}('');
         }
@@ -326,7 +328,9 @@ contract Zap is
 
     /* ======== INTERNAL FUNCTIONS ======== */
 
-    function _getRequiredSellAmount() internal view returns (uint) {
+    function _getRequiredSellAmount(
+        uint ethAmount
+    ) internal view returns (uint) {
         address trireme = addressProvider.getTrireme();
         IUniswapV2Pair pair = IUniswapV2Pair(
             IUniswapV2Factory(router.factory()).getPair(trireme, router.WETH())
@@ -335,7 +339,7 @@ contract Zap is
         (uint256 rsv0, uint256 rsv1, ) = pair.getReserves();
         uint256 sellAmount = _calculateSwapInAmount(
             pair.token0() == trireme ? rsv1 : rsv0,
-            address(this).balance
+            ethAmount
         );
         return sellAmount;
     }
