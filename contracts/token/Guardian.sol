@@ -17,6 +17,7 @@ import {IUniswapV2Router02} from '../interfaces/IUniswapV2Router02.sol';
 import {IERC20MintableBurnable} from '../interfaces/IERC20MintableBurnable.sol';
 import {IPriceOracleAggregator} from '../interfaces/IPriceOracleAggregator.sol';
 import {IObelisk} from '../interfaces/IObelisk.sol';
+import '../interfaces/IZap.sol';
 
 error INVALID_ADDRESS();
 error INVALID_AMOUNT();
@@ -126,6 +127,9 @@ contract Guardian is
     /// @notice tributeFee for ETH (percentage)
     uint256 public tributeFeeForETH;
 
+    address public lpFeeReceiver;
+    IZap public zap;
+
     /* ======== EVENTS ======== */
 
     event MintLimit(uint256 limit);
@@ -140,6 +144,9 @@ contract Guardian is
     event Claim(address indexed from, uint256 reward, uint256 dividends);
     event Bond(address indexed to, uint256 amount);
     event TributeFee(uint256 tributeFeeForTrireme, uint256 tributeFeeForETH);
+    event Zap(address zap);
+    event LpFeeReceiver(address receiver);
+    event PricePerGuardian(uint price);
 
     /* ======== INITIALIZATION ======== */
 
@@ -258,6 +265,30 @@ contract Guardian is
         tributeFeeForETH = feeForETH;
 
         emit TributeFee(feeForTrireme, feeForETH);
+    }
+
+    function setZap(address zap_) external onlyOwner {
+        if (zap_ == address(0)) revert INVALID_ADDRESS();
+
+        zap = IZap(zap_);
+
+        emit Zap(zap_);
+    }
+
+    function setLpFeeReceiver(address receiver) external onlyOwner {
+        if (receiver == address(0)) revert INVALID_ADDRESS();
+
+        lpFeeReceiver = receiver;
+
+        emit LpFeeReceiver(receiver);
+    }
+
+    function setPricePerGuardian(uint price) external onlyOwner {
+        if (price == 0) revert INVALID_AMOUNT();
+
+        pricePerGuardian = price;
+
+        emit PricePerGuardian(price);
     }
 
     function addFeeTokens(address[] calldata tokens) external onlyOwner {
@@ -410,14 +441,15 @@ contract Guardian is
 
         if (dividendsInfo.pending >= usdcFee) {
             dividendsInfo.pending -= usdcFee;
-            USDC.safeTransfer(treasury, usdcFee);
+
+            USDC.approve(address(zap), usdcFee);
+            zap.zapInToken(address(USDC), usdcFee, lpFeeReceiver);
         } else {
-            IERC20(feeToken).safeTransferFrom(
-                _msgSender(),
-                treasury,
-                (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) /
-                    MULTIPLIER
-            );
+            uint fee = (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) /
+                MULTIPLIER;
+            IERC20(feeToken).safeTransferFrom(_msgSender(), address(this), fee);
+            IERC20(feeToken).approve(address(zap), fee);
+            zap.zapInToken(feeToken, fee, lpFeeReceiver);
         }
 
         _simpleMint(to, amount);
@@ -730,14 +762,15 @@ contract Guardian is
 
         if (dividendsInfo.pending >= usdcFee) {
             dividendsInfo.pending -= usdcFee;
-            USDC.safeTransfer(treasury, usdcFee);
+
+            USDC.approve(address(zap), usdcFee);
+            zap.zapInToken(address(USDC), usdcFee, lpFeeReceiver);
         } else {
-            IERC20(feeToken).safeTransferFrom(
-                account,
-                treasury,
-                (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) /
-                    MULTIPLIER
-            );
+            uint fee = (txnFee * 10 ** IERC20Metadata(feeToken).decimals()) /
+                MULTIPLIER;
+            IERC20(feeToken).safeTransferFrom(_msgSender(), address(this), fee);
+            IERC20(feeToken).approve(address(zap), fee);
+            zap.zapInToken(feeToken, fee, lpFeeReceiver);
         }
 
         // mint Guardian
@@ -765,7 +798,9 @@ contract Guardian is
 
         // usdc to treasury
         dividendsInfo.pending -= dividends;
-        USDC.safeTransfer(treasury, dividends);
+
+        USDC.approve(address(zap), dividends);
+        zap.zapInToken(address(USDC), dividends, lpFeeReceiver);
     }
 
     /* ======== OBELISK FUNCTIONS ======== */

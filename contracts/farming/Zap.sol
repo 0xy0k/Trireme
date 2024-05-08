@@ -275,7 +275,75 @@ contract Zap is
         }
     }
 
+    function zapInToken(
+        address token,
+        uint amount,
+        address receiver
+    )
+        external
+        returns (uint256 amountTrireme, uint256 amountETH, uint256 liquidity)
+    {
+        if (receiver == address(0)) revert INVALID_ADDRESS();
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(token).approve(address(router), amount);
+
+        // Swap token to ETH
+        address[] memory path = new address[](2);
+        path[0] = address(token);
+        path[1] = router.WETH();
+        router.swapExactTokensForETH(
+            amount,
+            0,
+            path,
+            address(this),
+            block.timestamp
+        );
+
+        uint ethBal = address(this).balance;
+
+        // Swap half in tri and add liquidity
+        address trireme = addressProvider.getTrireme();
+        uint256 sellAmount = _getRequiredSellAmount(ethBal);
+
+        path[0] = router.WETH();
+        path[1] = trireme;
+        router.swapExactETHForTokensSupportingFeeOnTransferTokens{
+            value: sellAmount
+        }(0, path, address(this), block.timestamp);
+
+        (amountTrireme, amountETH, liquidity) = router.addLiquidityETH{
+            value: ethBal - sellAmount
+        }(
+            trireme,
+            IERC20(trireme).balanceOf(address(this)),
+            0,
+            0,
+            receiver,
+            block.timestamp
+        );
+        uint256 remainingETH = ethBal - amountETH - sellAmount;
+        if (remainingETH > 0) {
+            payable(receiver).call{value: remainingETH}('');
+        }
+    }
+
     /* ======== INTERNAL FUNCTIONS ======== */
+
+    function _getRequiredSellAmount(
+        uint ethAmount
+    ) internal view returns (uint) {
+        address trireme = addressProvider.getTrireme();
+        IUniswapV2Pair pair = IUniswapV2Pair(
+            IUniswapV2Factory(router.factory()).getPair(trireme, router.WETH())
+        );
+
+        (uint256 rsv0, uint256 rsv1, ) = pair.getReserves();
+        uint256 sellAmount = _calculateSwapInAmount(
+            pair.token0() == trireme ? rsv1 : rsv0,
+            ethAmount
+        );
+        return sellAmount;
+    }
 
     function _calculateSwapInAmount(
         uint256 reserveIn,
