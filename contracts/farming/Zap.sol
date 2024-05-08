@@ -283,7 +283,8 @@ contract Zap is
         external
         returns (uint256 amountTrireme, uint256 amountETH, uint256 liquidity)
     {
-        IERC20(token).transferFrom(msg.sender, address(this), amount);
+        if (receiver == address(0)) revert INVALID_ADDRESS();
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         IERC20(token).approve(address(router), amount);
 
         // Swap token to ETH
