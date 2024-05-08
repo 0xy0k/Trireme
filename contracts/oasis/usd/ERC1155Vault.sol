@@ -25,7 +25,7 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     using RateLib for RateLib.Rate;
     /// @notice The Trireme trait boost locker contract
-    ERC1155ValueProvider public valueProvider;
+    address public valueProvider;
 
     IERC1155Upgradeable public tokenContract;
     uint256 public tokenIndex;
@@ -39,9 +39,9 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
         IStableCoin _stablecoin,
         IERC1155Upgradeable _tokenContract,
         uint256 _tokenIndex,
-        ERC1155ValueProvider _valueProvider,
+        address _valueProvider,
         VaultSettings calldata _settings
-    ) external initializer {
+    ) external virtual initializer {
         __initialize(_stablecoin, _settings);
         tokenContract = _tokenContract;
         tokenIndex = _tokenIndex;
@@ -49,7 +49,7 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
     }
 
     function setValueProvider(
-        ERC1155ValueProvider _valueProvider
+        address _valueProvider
     ) external onlyRole(SETTER_ROLE) {
         valueProvider = _valueProvider;
     }
@@ -156,11 +156,9 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
     function _getCreditLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view override returns (uint256) {
-        uint256 creditLimitUSD = valueProvider.getCreditLimitUSD(
-            _owner,
-            _colAmount
-        );
+    ) internal view virtual override returns (uint256) {
+        uint256 creditLimitUSD = ERC1155ValueProvider(valueProvider)
+            .getCreditLimitUSD(_owner, _colAmount);
         return creditLimitUSD;
     }
 
@@ -171,11 +169,9 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
     function _getLiquidationLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view override returns (uint256) {
-        uint256 liquidationLimitUSD = valueProvider.getLiquidationLimitUSD(
-            _owner,
-            _colAmount
-        );
+    ) internal view virtual override returns (uint256) {
+        uint256 liquidationLimitUSD = ERC1155ValueProvider(valueProvider)
+            .getLiquidationLimitUSD(_owner, _colAmount);
         return liquidationLimitUSD;
     }
 
