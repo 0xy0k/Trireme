@@ -144,9 +144,6 @@ contract Guardian is
     event Claim(address indexed from, uint256 reward, uint256 dividends);
     event Bond(address indexed to, uint256 amount);
     event TributeFee(uint256 tributeFeeForTrireme, uint256 tributeFeeForETH);
-    event Zap(address zap);
-    event LpFeeReceiver(address receiver);
-    event PricePerGuardian(uint price);
 
     /* ======== INITIALIZATION ======== */
 
@@ -268,27 +265,21 @@ contract Guardian is
     }
 
     function setZap(address zap_) external onlyOwner {
-        if (zap_ == address(0)) revert INVALID_ADDRESS();
-
         zap = IZap(zap_);
-
-        emit Zap(zap_);
     }
 
     function setLpFeeReceiver(address receiver) external onlyOwner {
-        if (receiver == address(0)) revert INVALID_ADDRESS();
-
         lpFeeReceiver = receiver;
-
-        emit LpFeeReceiver(receiver);
     }
 
     function setPricePerGuardian(uint price) external onlyOwner {
-        if (price == 0) revert INVALID_AMOUNT();
-
         pricePerGuardian = price;
+    }
 
-        emit PricePerGuardian(price);
+    function setRewardRate(
+        RewardRate memory _rewardRate
+    ) external onlyOwner update {
+        rewardRate = _rewardRate;
     }
 
     function addFeeTokens(address[] calldata tokens) external onlyOwner {
