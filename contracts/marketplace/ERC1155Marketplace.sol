@@ -22,7 +22,7 @@ contract ERC1155Marketplace is
     error NoEscrow(uint tokenId);
 
     bytes32 public constant WHITELISTED_ROLE = keccak256('WHITELISTED_ROLE');
-    mapping(uint => address) public escrows;
+    mapping(bytes => address) public escrows;
 
     function initialize(
         uint256 _bidTimeIncrement,
@@ -157,12 +157,15 @@ contract ERC1155Marketplace is
         address from,
         address to,
         address nft,
-        uint tokenId
+        uint tokenId,
+        bytes32 prefix
     ) internal override(MarketplaceAuction, MarketplaceSale) {
+        bytes memory key = abi.encode(prefix, nft, tokenId);
+
         if (to == address(this)) {
             // Create a new escrow
             MarketplaceEscrow escrow = new MarketplaceEscrow();
-            escrows[tokenId] = address(escrow);
+            escrows[key] = address(escrow);
             IERC1155Upgradeable(nft).safeTransferFrom(
                 from,
                 address(escrow),
@@ -172,7 +175,7 @@ contract ERC1155Marketplace is
             );
         }
         if (from == address(this)) {
-            MarketplaceEscrow escrow = MarketplaceEscrow(escrows[tokenId]);
+            MarketplaceEscrow escrow = MarketplaceEscrow(escrows[key]);
             if (address(escrow) == address(0)) revert NoEscrow(tokenId);
 
             escrow.refundAsset(nft, tokenId, to);

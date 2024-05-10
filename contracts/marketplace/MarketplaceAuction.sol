@@ -53,6 +53,8 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         mapping(address => uint256) bids;
     }
 
+    bytes32 public constant AUCTION_PREFIX = keccak256('AUCTION_PREFIX');
+
     uint256 public bidTimeIncrement;
     uint256 public auctionsLength;
 
@@ -87,7 +89,7 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         auction.endTime = block.timestamp + _duration;
         auction.minBid = _minBid;
 
-        _transferAsset(msg.sender, address(this), _nft, _idx);
+        _transferAsset(msg.sender, address(this), _nft, _idx, AUCTION_PREFIX);
 
         emit NewAuction(auctionsLength - 1, _nft, _idx, block.timestamp);
     }
@@ -110,7 +112,13 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         uint256 _nftIndex = auction.nftIndex;
         delete auctions[_auctionIndex];
 
-        _transferAsset(address(this), _nftRecipient, _nft, _nftIndex);
+        _transferAsset(
+            address(this),
+            _nftRecipient,
+            _nft,
+            _nftIndex,
+            AUCTION_PREFIX
+        );
 
         emit AuctionCanceled(_auctionIndex);
     }
@@ -163,7 +171,8 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
             address(this),
             msg.sender,
             auction.nftAddress,
-            auction.nftIndex
+            auction.nftIndex,
+            AUCTION_PREFIX
         );
 
         emit NFTClaimed(_auctionIndex);
@@ -248,7 +257,8 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
             address(this),
             msg.sender,
             auction.nftAddress,
-            auction.nftIndex
+            auction.nftIndex,
+            AUCTION_PREFIX
         );
 
         emit AuctionFailed(_auctionIndex);
@@ -281,6 +291,7 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         address from,
         address to,
         address nft,
-        uint tokenId
+        uint tokenId,
+        bytes32
     ) internal virtual;
 }

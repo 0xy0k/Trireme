@@ -30,6 +30,8 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         bool bought;
     }
 
+    bytes32 public constant SALE_PREFIX = keccak256('SALE_PREFIX');
+
     uint256 public salesLength;
 
     mapping(address => EnumerableSetUpgradeable.UintSet) internal userSales;
@@ -56,7 +58,7 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         sale.nftIndex = _idx;
         sale.price = _price;
 
-        _transferAsset(msg.sender, address(this), _nft, _idx);
+        _transferAsset(msg.sender, address(this), _nft, _idx, SALE_PREFIX);
 
         emit NewSale(salesLength - 1, _nft, _idx, _price);
     }
@@ -75,7 +77,13 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         uint256 _nftIndex = sale.nftIndex;
         delete sales[_saleIndex];
 
-        _transferAsset(address(this), _nftRecipient, _nft, _nftIndex);
+        _transferAsset(
+            address(this),
+            _nftRecipient,
+            _nft,
+            _nftIndex,
+            SALE_PREFIX
+        );
 
         emit SaleCanceled(_saleIndex);
     }
@@ -110,7 +118,8 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
             address(this),
             msg.sender,
             sale.nftAddress,
-            sale.nftIndex
+            sale.nftIndex,
+            SALE_PREFIX
         );
 
         (bool _sent, ) = payable(msg.sender).call{value: sale.price}('');
@@ -125,6 +134,7 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         address from,
         address to,
         address nft,
-        uint tokenId
+        uint tokenId,
+        bytes32 prefix
     ) internal virtual;
 }
