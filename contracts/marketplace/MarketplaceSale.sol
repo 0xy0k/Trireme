@@ -25,9 +25,8 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         address owner;
         address nftAddress;
         uint256 nftIndex;
-        uint256 startTime;
         uint256 price;
-        bool bought;
+        address buyer;
     }
 
     bytes32 public constant SALE_PREFIX = keccak256('SALE_PREFIX');
@@ -52,15 +51,18 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         if (address(_nft) == address(0)) revert ZeroAddress();
         if (_price == 0) revert InvalidAmount();
 
-        Sale storage sale = sales[salesLength++];
+        _transferAsset(_owner, address(this), _nft, _idx, SALE_PREFIX);
+
+        uint saleId = salesLength++;
+        Sale storage sale = sales[saleId];
         sale.owner = _owner;
         sale.nftAddress = _nft;
         sale.nftIndex = _idx;
         sale.price = _price;
 
-        _transferAsset(msg.sender, address(this), _nft, _idx, SALE_PREFIX);
+        userSales[_owner].add(saleId);
 
-        emit NewSale(salesLength - 1, _nft, _idx, _price);
+        emit NewSale(saleId, _nft, _idx, _price);
     }
 
     /// @notice Allows the admin to cancel an ongoing sale with no offers
@@ -71,11 +73,13 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
 
         Sale storage sale = sales[_saleIndex];
         address _nft = sale.nftAddress;
-        if (_nft == address(0)) revert InvalidSale(_saleIndex);
-        if (sale.owner != msg.sender) revert Unauthorized();
-
         uint256 _nftIndex = sale.nftIndex;
+        if (_nft == address(0)) revert InvalidSale(_saleIndex);
+        if (sale.owner != msg.sender || sale.buyer != address(0))
+            revert Unauthorized();
+
         delete sales[_saleIndex];
+        userSales[sale.owner].remove(_saleIndex);
 
         _transferAsset(
             address(this),
@@ -96,7 +100,8 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         address _nft = sale.nftAddress;
         if (_nft == address(0)) revert InvalidSale(_saleIndex);
         if (_price == 0) revert InvalidAmount();
-        if (sale.owner != msg.sender) revert Unauthorized();
+        if (sale.owner != msg.sender || sale.buyer != address(0))
+            revert Unauthorized();
 
         sale.price = _price;
 
@@ -107,10 +112,13 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
     /// @param _saleIndex The sale index to deal
     function _buy(uint256 _saleIndex) internal {
         Sale storage sale = sales[_saleIndex];
-        if (sale.bought) revert InvalidSale(_saleIndex);
+        address _nft = sale.nftAddress;
+        if (_nft == address(0)) revert InvalidSale(_saleIndex);
+        if (sale.buyer != address(0)) revert InvalidSale(_saleIndex);
         if (msg.value < sale.price) revert InvalidAmount();
 
-        sale.bought = true;
+        sale.buyer = msg.sender;
+        userSales[sale.owner].remove(_saleIndex);
 
         emit BoughtSale(_saleIndex, msg.sender);
 
@@ -122,12 +130,23 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
             SALE_PREFIX
         );
 
-        (bool _sent, ) = payable(msg.sender).call{value: sale.price}('');
+        (bool _sent, ) = payable(sale.owner).call{value: sale.price}('');
         assert(_sent);
 
         // Refund dust
-        (_sent, ) = payable(msg.sender).call{value: msg.value - sale.price}('');
-        assert(_sent);
+        uint dust = msg.value - sale.price;
+        if (dust > 0) {
+            (_sent, ) = payable(msg.sender).call{value: dust}('');
+            assert(_sent);
+        }
+    }
+
+    /// @return The list of active sales for an account.
+    /// @param _account The address to check.
+    function getActiveSales(
+        address _account
+    ) external view returns (uint256[] memory) {
+        return userSales[_account].values();
     }
 
     function _transferAsset(
