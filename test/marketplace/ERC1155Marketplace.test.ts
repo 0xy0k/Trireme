@@ -152,8 +152,8 @@ describe('ERC1155 Marketplace', () => {
 
       const prefix = await marketplace.AUCTION_PREFIX();
       const escrowId = Interface.getAbiCoder().encode(
-        ['bytes32', 'address', 'uint256'],
-        [prefix, mockNFT.address, tokenId]
+        ['bytes32', 'address', 'uint256', 'uint256'],
+        [prefix, mockNFT.address, tokenId, auctionId]
       );
       const escrow = await marketplace.escrows(escrowId);
       expect(await mockNFT.balanceOf(escrow, tokenId)).to.be.equal(1);
@@ -537,8 +537,8 @@ describe('ERC1155 Marketplace', () => {
 
       const prefix = await marketplace.SALE_PREFIX();
       const escrowId = Interface.getAbiCoder().encode(
-        ['bytes32', 'address', 'uint256'],
-        [prefix, mockNFT.address, tokenId]
+        ['bytes32', 'address', 'uint256', 'uint256'],
+        [prefix, mockNFT.address, tokenId, sales[0]]
       );
       const escrow = await marketplace.escrows(escrowId);
       expect(await mockNFT.balanceOf(escrow, tokenId)).to.be.equal(1);

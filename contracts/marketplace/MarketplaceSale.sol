@@ -51,9 +51,9 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         if (address(_nft) == address(0)) revert ZeroAddress();
         if (_price == 0) revert InvalidAmount();
 
-        _transferAsset(_owner, address(this), _nft, _idx, SALE_PREFIX);
-
         uint saleId = salesLength++;
+        _transferAsset(_owner, address(this), _nft, _idx, SALE_PREFIX, saleId);
+
         Sale storage sale = sales[saleId];
         sale.owner = _owner;
         sale.nftAddress = _nft;
@@ -86,7 +86,8 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
             _nftRecipient,
             _nft,
             _nftIndex,
-            SALE_PREFIX
+            SALE_PREFIX,
+            _saleIndex
         );
 
         emit SaleCanceled(_saleIndex);
@@ -127,7 +128,8 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
             msg.sender,
             sale.nftAddress,
             sale.nftIndex,
-            SALE_PREFIX
+            SALE_PREFIX,
+            _saleIndex
         );
 
         (bool _sent, ) = payable(sale.owner).call{value: sale.price}('');
@@ -154,6 +156,7 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         address to,
         address nft,
         uint tokenId,
-        bytes32 prefix
+        bytes32 prefix,
+        uint256 index
     ) internal virtual;
 }

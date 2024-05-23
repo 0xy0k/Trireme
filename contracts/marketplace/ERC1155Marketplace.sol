@@ -158,9 +158,10 @@ contract ERC1155Marketplace is
         address to,
         address nft,
         uint tokenId,
-        bytes32 prefix
+        bytes32 prefix,
+        uint index
     ) internal override(MarketplaceAuction, MarketplaceSale) {
-        bytes memory key = abi.encode(prefix, nft, tokenId);
+        bytes memory key = abi.encode(prefix, nft, tokenId, index);
 
         if (to == address(this)) {
             // Create a new escrow

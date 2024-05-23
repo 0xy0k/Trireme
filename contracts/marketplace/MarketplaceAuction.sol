@@ -81,15 +81,23 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         if (address(_nft) == address(0)) revert ZeroAddress();
         if (_duration < 1 days || _minBid == 0) revert InvalidAmount();
 
-        Auction storage auction = auctions[auctionsLength++];
+        uint auctionId = auctionsLength++;
+        _transferAsset(
+            msg.sender,
+            address(this),
+            _nft,
+            _idx,
+            AUCTION_PREFIX,
+            auctionId
+        );
+
+        Auction storage auction = auctions[auctionId];
         auction.owner = _owner;
         auction.nftAddress = _nft;
         auction.nftIndex = _idx;
         auction.startTime = block.timestamp;
         auction.endTime = block.timestamp + _duration;
         auction.minBid = _minBid;
-
-        _transferAsset(msg.sender, address(this), _nft, _idx, AUCTION_PREFIX);
 
         emit NewAuction(auctionsLength - 1, _nft, _idx, block.timestamp);
     }
@@ -117,7 +125,8 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
             _nftRecipient,
             _nft,
             _nftIndex,
-            AUCTION_PREFIX
+            AUCTION_PREFIX,
+            _auctionIndex
         );
 
         emit AuctionCanceled(_auctionIndex);
@@ -172,7 +181,8 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
             msg.sender,
             auction.nftAddress,
             auction.nftIndex,
-            AUCTION_PREFIX
+            AUCTION_PREFIX,
+            _auctionIndex
         );
 
         emit NFTClaimed(_auctionIndex);
@@ -258,7 +268,8 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
             msg.sender,
             auction.nftAddress,
             auction.nftIndex,
-            AUCTION_PREFIX
+            AUCTION_PREFIX,
+            _auctionIndex
         );
 
         emit AuctionFailed(_auctionIndex);
@@ -292,6 +303,7 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         address to,
         address nft,
         uint tokenId,
-        bytes32
+        bytes32 prefix,
+        uint256 index
     ) internal virtual;
 }

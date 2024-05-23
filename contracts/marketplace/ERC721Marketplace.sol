@@ -154,7 +154,8 @@ contract ERC721Marketplace is
         address to,
         address nft,
         uint tokenId,
-        bytes32
+        bytes32,
+        uint
     ) internal override(MarketplaceAuction, MarketplaceSale) {
         IERC721Upgradeable(nft).transferFrom(from, to, tokenId);
     }
