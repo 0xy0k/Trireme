@@ -9,12 +9,14 @@ import {RateLib} from '../utils/RateLib.sol';
 
 import './MarketplaceAuction.sol';
 import './MarketplaceSale.sol';
+import './MarketplaceTax.sol';
 
 contract ERC721Marketplace is
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
     MarketplaceAuction,
-    MarketplaceSale
+    MarketplaceSale,
+    MarketplaceTax
 {
     using RateLib for RateLib.Rate;
 
@@ -22,16 +24,16 @@ contract ERC721Marketplace is
 
     function initialize(
         uint256 _bidTimeIncrement,
-        RateLib.Rate memory _incrementRate
+        RateLib.Rate memory _incrementRate,
+        RateLib.Rate memory _taxRate,
+        address _treasury
     ) external initializer {
         __AccessControl_init();
         __ReentrancyGuard_init();
         __Auction_init(_bidTimeIncrement, _incrementRate);
+        __Tax_init(_taxRate, _treasury);
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-
-        setBidTimeIncrement(_bidTimeIncrement);
-        setMinimumIncrementRate(_incrementRate);
     }
 
     /// @notice Allows whitelisted addresses to create a new auction in the next slot.
@@ -113,6 +115,22 @@ contract ERC721Marketplace is
         _setMinimumIncrementRate(_newIncrementRate);
     }
 
+    /// @notice Allows admins to set the new tax rate.
+    /// @param _newTaxRate The new tax rate.
+    function setTaxRate(
+        RateLib.Rate memory _newTaxRate
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setTaxRate(_newTaxRate);
+    }
+
+    /// @notice Allows admins to set the new treasury.
+    /// @param _newTreasury The new treasury address.
+    function setTreasury(
+        address _newTreasury
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setTreasury(_newTreasury);
+    }
+
     /// @notice Create a new sale
     /// @param _nft The address of the NFT to sell
     /// @param _idx The index of the NFT to sell
@@ -158,5 +176,15 @@ contract ERC721Marketplace is
         uint
     ) internal override(MarketplaceAuction, MarketplaceSale) {
         IERC721Upgradeable(nft).transferFrom(from, to, tokenId);
+    }
+
+    function _cutTax(
+        uint amount
+    )
+        internal
+        override(MarketplaceAuction, MarketplaceSale)
+        returns (uint fee)
+    {
+        return _sendToTreasury(amount);
     }
 }

@@ -242,9 +242,11 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
 
         emit ETHClaimed(_auctionIndex);
 
-        (bool _sent, ) = payable(msg.sender).call{
-            value: auction.bids[_highestBidder]
-        }('');
+        uint bidAmount = auction.bids[_highestBidder];
+        uint taxFee = _cutTax(bidAmount);
+        (bool _sent, ) = payable(msg.sender).call{value: bidAmount - taxFee}(
+            ''
+        );
         assert(_sent);
     }
 
@@ -306,4 +308,6 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         bytes32 prefix,
         uint256 index
     ) internal virtual;
+
+    function _cutTax(uint amount) internal virtual returns (uint fee);
 }

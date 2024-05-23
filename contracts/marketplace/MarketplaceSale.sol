@@ -132,7 +132,10 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
             _saleIndex
         );
 
-        (bool _sent, ) = payable(sale.owner).call{value: sale.price}('');
+        uint taxFee = _cutTax(sale.price);
+        (bool _sent, ) = payable(sale.owner).call{value: sale.price - taxFee}(
+            ''
+        );
         assert(_sent);
 
         // Refund dust
@@ -159,4 +162,6 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         bytes32 prefix,
         uint256 index
     ) internal virtual;
+
+    function _cutTax(uint amount) internal virtual returns (uint fee);
 }

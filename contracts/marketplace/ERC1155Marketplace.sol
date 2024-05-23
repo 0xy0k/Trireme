@@ -11,13 +11,15 @@ import {RateLib} from '../utils/RateLib.sol';
 import './MarketplaceAuction.sol';
 import './MarketplaceSale.sol';
 import './MarketplaceEscrow.sol';
+import './MarketplaceTax.sol';
 
 contract ERC1155Marketplace is
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
     IERC1155ReceiverUpgradeable,
     MarketplaceAuction,
-    MarketplaceSale
+    MarketplaceSale,
+    MarketplaceTax
 {
     error NoEscrow(uint tokenId);
 
@@ -26,16 +28,16 @@ contract ERC1155Marketplace is
 
     function initialize(
         uint256 _bidTimeIncrement,
-        RateLib.Rate memory _incrementRate
+        RateLib.Rate memory _incrementRate,
+        RateLib.Rate memory _taxRate,
+        address _treasury
     ) external initializer {
         __AccessControl_init();
         __ReentrancyGuard_init();
         __Auction_init(_bidTimeIncrement, _incrementRate);
+        __Tax_init(_taxRate, _treasury);
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-
-        setBidTimeIncrement(_bidTimeIncrement);
-        setMinimumIncrementRate(_incrementRate);
     }
 
     /// @notice Allows whitelisted addresses to create a new auction in the next slot.
@@ -115,6 +117,22 @@ contract ERC1155Marketplace is
         RateLib.Rate memory _newIncrementRate
     ) public onlyRole(DEFAULT_ADMIN_ROLE) {
         _setMinimumIncrementRate(_newIncrementRate);
+    }
+
+    /// @notice Allows admins to set the new tax rate.
+    /// @param _newTaxRate The new tax rate.
+    function setTaxRate(
+        RateLib.Rate memory _newTaxRate
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setTaxRate(_newTaxRate);
+    }
+
+    /// @notice Allows admins to set the new treasury.
+    /// @param _newTreasury The new treasury address.
+    function setTreasury(
+        address _newTreasury
+    ) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setTreasury(_newTreasury);
     }
 
     /// @notice Create a new sale
@@ -211,5 +229,15 @@ contract ERC1155Marketplace is
                     'onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)'
                 )
             );
+    }
+
+    function _cutTax(
+        uint amount
+    )
+        internal
+        override(MarketplaceAuction, MarketplaceSale)
+        returns (uint fee)
+    {
+        return _sendToTreasury(amount);
     }
 }

@@ -8,6 +8,7 @@ import { evm_increaseTime } from '../helper';
 describe('ERC721 Marketplace', () => {
   let owner: SignerWithAddress;
   let alice: SignerWithAddress;
+  let treasury: SignerWithAddress;
 
   let mockNFT: MockERC721;
   let marketplace: ERC721Marketplace;
@@ -26,7 +27,7 @@ describe('ERC721 Marketplace', () => {
   let tokenId: BigNumber;
 
   before(async () => {
-    [owner, alice] = await ethers.getSigners();
+    [owner, alice, treasury] = await ethers.getSigners();
 
     const factory = await ethers.getContractFactory('MockERC721');
     mockNFT = <MockERC721>await factory.deploy('Mock', 'Mock', '');
@@ -39,6 +40,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
     });
@@ -95,6 +98,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
 
@@ -157,6 +162,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -225,6 +232,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -280,6 +289,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -346,6 +357,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -395,16 +408,20 @@ describe('ERC721 Marketplace', () => {
         .bid(auctionId, { value: bidAmount.mul(2) });
       await evm_increaseTime(auctionDuration.toNumber());
 
+      const tax = bidAmount.mul(2).mul(numerator).div(denominator);
       const beforeBal = await owner.getBalance();
+      const treasuryBeforeBal = await treasury.getBalance();
       await expect(marketplace.withdrawETH(auctionId)).to.be.emit(
         marketplace,
         'ETHClaimed'
       );
       const afterBal = await owner.getBalance();
+      const treasuryAfterBal = await treasury.getBalance();
       expect(afterBal).to.be.closeTo(
-        beforeBal.add(bidAmount.mul(2)),
+        beforeBal.add(bidAmount.mul(2)).sub(tax),
         parseEther('0.0001')
       );
+      expect(treasuryAfterBal).to.be.equal(treasuryBeforeBal.add(tax));
 
       await expect(marketplace.withdrawETH(auctionId)).to.be.revertedWith(
         'Unauthorized'
@@ -419,6 +436,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -483,6 +502,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -534,6 +555,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -585,6 +608,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -638,6 +663,8 @@ describe('ERC721 Marketplace', () => {
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
           { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
         ])
       );
       await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
@@ -670,14 +697,22 @@ describe('ERC721 Marketplace', () => {
       ).to.be.revertedWith('InvalidSale');
     });
     it('should be able to buy sale', async () => {
-      const beforeOwnerBal = await ethers.provider.getBalance(owner.address);
+      const beforeOwnerBal = await owner.getBalance();
+      const beforeTreasuryBal = await treasury.getBalance();
+
       await expect(
         marketplace.connect(alice).buy(0, { value: listingPrice })
       ).to.be.emit(marketplace, 'BoughtSale');
 
       expect(await mockNFT.ownerOf(tokenId)).to.be.equal(alice.address);
-      const afterOwnerBal = await ethers.provider.getBalance(owner.address);
-      expect(afterOwnerBal.sub(beforeOwnerBal)).to.be.equal(listingPrice);
+
+      const tax = listingPrice.mul(numerator).div(denominator);
+      const afterOwnerBal = await owner.getBalance();
+      const afterTreasuryBal = await treasury.getBalance();
+      expect(afterOwnerBal.sub(beforeOwnerBal)).to.be.equal(
+        listingPrice.sub(tax)
+      );
+      expect(afterTreasuryBal).to.be.equal(beforeTreasuryBal.add(tax));
     });
   });
 });
