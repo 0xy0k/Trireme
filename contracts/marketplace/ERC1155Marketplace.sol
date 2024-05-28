@@ -12,6 +12,7 @@ import './MarketplaceAuction.sol';
 import './MarketplaceSale.sol';
 import './MarketplaceEscrow.sol';
 import './MarketplaceTax.sol';
+import './MarketplaceDiscount.sol';
 
 contract ERC1155Marketplace is
     AccessControlUpgradeable,
@@ -19,25 +20,39 @@ contract ERC1155Marketplace is
     IERC1155ReceiverUpgradeable,
     MarketplaceAuction,
     MarketplaceSale,
-    MarketplaceTax
+    MarketplaceTax,
+    MarketplaceDiscount
 {
+    using RateLib for RateLib.Rate;
+
     error NoEscrow(uint tokenId);
 
     bytes32 public constant WHITELISTED_ROLE = keccak256('WHITELISTED_ROLE');
+
+    address public guardianNFT;
+    uint8[6] private SIZES;
     mapping(bytes => address) public escrows;
 
     function initialize(
         uint256 _bidTimeIncrement,
         RateLib.Rate memory _incrementRate,
         RateLib.Rate memory _taxRate,
-        address _treasury
+        RateLib.Rate memory _auctionDiscountRate,
+        RateLib.Rate memory _saleDiscountRate,
+        address _treasury,
+        address _guardianNFT
     ) external initializer {
         __AccessControl_init();
         __ReentrancyGuard_init();
-        __Auction_init(_bidTimeIncrement, _incrementRate);
+        __Auction_init(_bidTimeIncrement, _incrementRate, _auctionDiscountRate);
+        __Sale_init(_saleDiscountRate);
         __Tax_init(_taxRate, _treasury);
+        __Discount_init(false);
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+
+        guardianNFT = _guardianNFT;
+        SIZES = [1, 5, 10, 25, 50, 100];
     }
 
     /// @notice Allows whitelisted addresses to create a new auction in the next slot.
@@ -133,6 +148,33 @@ contract ERC1155Marketplace is
         address _newTreasury
     ) public onlyRole(DEFAULT_ADMIN_ROLE) {
         _setTreasury(_newTreasury);
+    }
+
+    /// @notice Allows admins to set the maximum discount rate for sales.
+    /// @param _newDiscountRate The new discount rate.
+    function setSalesDiscountRate(
+        RateLib.Rate memory _newDiscountRate
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setSalesDiscountRate(_newDiscountRate);
+    }
+
+    /// @notice Allows admins to set the maximum discount rate for auction bids.
+    /// @param _newDiscountRate The new discount rate.
+    function setAuctionDiscountRate(
+        RateLib.Rate memory _newDiscountRate
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setAuctionDiscountRate(_newDiscountRate);
+    }
+
+    function enableDiscount(bool enable) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _enableDiscount(enable);
+    }
+
+    function setOracle(
+        address nft,
+        address oracle
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setOracle(nft, oracle);
     }
 
     /// @notice Create a new sale
@@ -239,5 +281,24 @@ contract ERC1155Marketplace is
         returns (uint fee)
     {
         return _sendToTreasury(amount);
+    }
+
+    function _getPremiumPrice(
+        address nft,
+        uint tokenId,
+        RateLib.Rate memory rate
+    )
+        internal
+        view
+        override(MarketplaceAuction, MarketplaceSale)
+        returns (uint)
+    {
+        if (!discountEnabled) return 0;
+        uint price = getNftPriceInETH(nft);
+        uint premiumPrice = rate.calculate(price);
+        if (nft == guardianNFT) {
+            premiumPrice /= SIZES[tokenId];
+        }
+        return premiumPrice;
     }
 }

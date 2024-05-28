@@ -4,10 +4,12 @@ pragma solidity 0.8.17;
 import '@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol';
 import '@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol';
 
+import {RateLib} from '../utils/RateLib.sol';
 import './MarketplaceBase.sol';
 
 abstract contract MarketplaceSale is Initializable, MarketplaceBase {
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.UintSet;
+    using RateLib for RateLib.Rate;
 
     error InvalidSale(uint256 index);
 
@@ -20,6 +22,10 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
     event SaleCanceled(uint256 indexed saleId);
     event SaleUpdated(uint256 indexed saleId, uint price);
     event BoughtSale(uint256 indexed saleId, address from);
+    event SaleDiscountRateChanged(
+        RateLib.Rate newDiscountRate,
+        RateLib.Rate oldDiscountRate
+    );
 
     struct Sale {
         address owner;
@@ -32,11 +38,16 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
     bytes32 public constant SALE_PREFIX = keccak256('SALE_PREFIX');
 
     uint256 public salesLength;
+    RateLib.Rate public saleDiscountRate;
 
     mapping(address => EnumerableSetUpgradeable.UintSet) internal userSales;
     mapping(uint256 => Sale) public sales;
 
-    function __Sale_init() internal onlyInitializing {}
+    function __Sale_init(
+        RateLib.Rate memory _saleDiscountRate
+    ) internal onlyInitializing {
+        _setSalesDiscountRate(_saleDiscountRate);
+    }
 
     /// @notice Create a new sale
     /// @param _nft The address of the NFT to sell
@@ -49,7 +60,8 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         uint256 _price
     ) internal {
         if (address(_nft) == address(0)) revert ZeroAddress();
-        if (_price == 0) revert InvalidAmount();
+        uint256 premiumPrice = _getPremiumPrice(_nft, _idx, saleDiscountRate);
+        if (_price < premiumPrice || _price == 0) revert InvalidAmount();
 
         uint saleId = salesLength++;
         _transferAsset(_owner, address(this), _nft, _idx, SALE_PREFIX, saleId);
@@ -100,7 +112,13 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         Sale storage sale = sales[_saleIndex];
         address _nft = sale.nftAddress;
         if (_nft == address(0)) revert InvalidSale(_saleIndex);
-        if (_price == 0) revert InvalidAmount();
+        uint256 _maxPremiumPrice = _getPremiumPrice(
+            _nft,
+            sale.nftIndex,
+            saleDiscountRate
+        );
+        if (_price < _maxPremiumPrice || _price == 0) revert InvalidAmount();
+
         if (sale.owner != msg.sender || sale.buyer != address(0))
             revert Unauthorized();
 
@@ -154,6 +172,19 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         return userSales[_account].values();
     }
 
+    /// @notice Allows admins to set the maximum discount rate for sales.
+    /// @param _newDiscountRate The new discount rate.
+    function _setSalesDiscountRate(
+        RateLib.Rate memory _newDiscountRate
+    ) internal {
+        if (!_newDiscountRate.isValid() || !_newDiscountRate.isBelowOne())
+            revert RateLib.InvalidRate();
+
+        emit SaleDiscountRateChanged(_newDiscountRate, saleDiscountRate);
+
+        saleDiscountRate = _newDiscountRate;
+    }
+
     function _transferAsset(
         address from,
         address to,
@@ -164,4 +195,10 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
     ) internal virtual;
 
     function _cutTax(uint amount) internal virtual returns (uint fee);
+
+    function _getPremiumPrice(
+        address nft,
+        uint tokenId,
+        RateLib.Rate memory rate
+    ) internal virtual returns (uint price);
 }

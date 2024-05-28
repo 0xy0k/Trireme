@@ -10,13 +10,15 @@ import {RateLib} from '../utils/RateLib.sol';
 import './MarketplaceAuction.sol';
 import './MarketplaceSale.sol';
 import './MarketplaceTax.sol';
+import './MarketplaceDiscount.sol';
 
 contract ERC721Marketplace is
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable,
     MarketplaceAuction,
     MarketplaceSale,
-    MarketplaceTax
+    MarketplaceTax,
+    MarketplaceDiscount
 {
     using RateLib for RateLib.Rate;
 
@@ -26,12 +28,16 @@ contract ERC721Marketplace is
         uint256 _bidTimeIncrement,
         RateLib.Rate memory _incrementRate,
         RateLib.Rate memory _taxRate,
+        RateLib.Rate memory _auctionDiscountRate,
+        RateLib.Rate memory _saleDiscountRate,
         address _treasury
     ) external initializer {
         __AccessControl_init();
         __ReentrancyGuard_init();
-        __Auction_init(_bidTimeIncrement, _incrementRate);
+        __Auction_init(_bidTimeIncrement, _incrementRate, _auctionDiscountRate);
+        __Sale_init(_saleDiscountRate);
         __Tax_init(_taxRate, _treasury);
+        __Discount_init(false);
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
@@ -131,6 +137,26 @@ contract ERC721Marketplace is
         _setTreasury(_newTreasury);
     }
 
+    /// @notice Allows admins to set the maximum discount rate for sales.
+    /// @param _newDiscountRate The new discount rate.
+    function setSalesDiscountRate(
+        RateLib.Rate memory _newDiscountRate
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setSalesDiscountRate(_newDiscountRate);
+    }
+
+    /// @notice Allows admins to set the maximum discount rate for auction bids.
+    /// @param _newDiscountRate The new discount rate.
+    function setAuctionDiscountRate(
+        RateLib.Rate memory _newDiscountRate
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setAuctionDiscountRate(_newDiscountRate);
+    }
+
+    function enableDiscount(bool enable) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _enableDiscount(enable);
+    }
+
     /// @notice Create a new sale
     /// @param _nft The address of the NFT to sell
     /// @param _idx The index of the NFT to sell
@@ -186,5 +212,18 @@ contract ERC721Marketplace is
         returns (uint fee)
     {
         return _sendToTreasury(amount);
+    }
+
+    function _getPremiumPrice(
+        address,
+        uint,
+        RateLib.Rate memory
+    )
+        internal
+        pure
+        override(MarketplaceAuction, MarketplaceSale)
+        returns (uint)
+    {
+        return type(uint).max;
     }
 }

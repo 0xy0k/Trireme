@@ -39,6 +39,10 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         RateLib.Rate newIncrementRate,
         RateLib.Rate oldIncrementRate
     );
+    event AuctionDiscountRateChanged(
+        RateLib.Rate newDiscountRate,
+        RateLib.Rate oldDiscountRate
+    );
     event DurationChanged(uint256 newDuration, uint256 oldDuration);
 
     struct Auction {
@@ -59,16 +63,19 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
     uint256 public auctionsLength;
 
     RateLib.Rate public minIncrementRate;
+    RateLib.Rate public auctionDiscountRate;
 
     mapping(address => EnumerableSetUpgradeable.UintSet) internal userAuctions;
     mapping(uint256 => Auction) public auctions;
 
     function __Auction_init(
         uint256 _bidTimeIncrement,
-        RateLib.Rate memory _incrementRate
+        RateLib.Rate memory _incrementRate,
+        RateLib.Rate memory _auctionDiscountRate
     ) internal onlyInitializing {
         _setBidTimeIncrement(_bidTimeIncrement);
         _setMinimumIncrementRate(_incrementRate);
+        _setAuctionDiscountRate(_auctionDiscountRate);
     }
 
     function _newAuction(
@@ -148,9 +155,17 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         uint256 _bidValue = msg.value + _previousBid;
         uint256 _currentMinBid = auction.bids[auction.highestBidOwner];
         _currentMinBid += minIncrementRate.calculate(_currentMinBid);
+        uint256 _maxPremiumPrice = _getPremiumPrice(
+            auction.nftAddress,
+            auction.nftIndex,
+            auctionDiscountRate
+        );
 
-        if (_currentMinBid > _bidValue || auction.minBid > _bidValue)
-            revert InvalidBid(_bidValue);
+        if (
+            _currentMinBid > _bidValue ||
+            auction.minBid > _bidValue ||
+            _maxPremiumPrice > _bidValue
+        ) revert InvalidBid(_bidValue);
 
         auction.highestBidOwner = msg.sender;
         auction.bids[msg.sender] = _bidValue;
@@ -300,6 +315,19 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
         minIncrementRate = _newIncrementRate;
     }
 
+    /// @notice Allows admins to set the maximum discount rate for auction bids.
+    /// @param _newDiscountRate The new discount rate.
+    function _setAuctionDiscountRate(
+        RateLib.Rate memory _newDiscountRate
+    ) internal {
+        if (!_newDiscountRate.isValid() || !_newDiscountRate.isBelowOne())
+            revert RateLib.InvalidRate();
+
+        emit AuctionDiscountRateChanged(_newDiscountRate, auctionDiscountRate);
+
+        auctionDiscountRate = _newDiscountRate;
+    }
+
     function _transferAsset(
         address from,
         address to,
@@ -310,4 +338,10 @@ abstract contract MarketplaceAuction is Initializable, MarketplaceBase {
     ) internal virtual;
 
     function _cutTax(uint amount) internal virtual returns (uint fee);
+
+    function _getPremiumPrice(
+        address nft,
+        uint tokenId,
+        RateLib.Rate memory rate
+    ) internal view virtual returns (uint price);
 }
