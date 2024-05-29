@@ -224,6 +224,6 @@ contract ERC721Marketplace is
         override(MarketplaceAuction, MarketplaceSale)
         returns (uint)
     {
-        return type(uint).max;
+        return 0;
     }
 }

@@ -41,6 +41,8 @@ describe('ERC721 Marketplace', () => {
           bidTimeIncrement,
           { numerator, denominator },
           { numerator, denominator },
+          { numerator, denominator },
+          { numerator, denominator },
           treasury.address,
         ])
       );
@@ -97,6 +99,8 @@ describe('ERC721 Marketplace', () => {
       marketplace = <ERC721Marketplace>(
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
+          { numerator, denominator },
+          { numerator, denominator },
           { numerator, denominator },
           { numerator, denominator },
           treasury.address,
@@ -161,6 +165,8 @@ describe('ERC721 Marketplace', () => {
       marketplace = <ERC721Marketplace>(
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
+          { numerator, denominator },
+          { numerator, denominator },
           { numerator, denominator },
           { numerator, denominator },
           treasury.address,
@@ -233,6 +239,8 @@ describe('ERC721 Marketplace', () => {
           bidTimeIncrement,
           { numerator, denominator },
           { numerator, denominator },
+          { numerator, denominator },
+          { numerator, denominator },
           treasury.address,
         ])
       );
@@ -288,6 +296,8 @@ describe('ERC721 Marketplace', () => {
       marketplace = <ERC721Marketplace>(
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
+          { numerator, denominator },
+          { numerator, denominator },
           { numerator, denominator },
           { numerator, denominator },
           treasury.address,
@@ -356,6 +366,8 @@ describe('ERC721 Marketplace', () => {
       marketplace = <ERC721Marketplace>(
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
+          { numerator, denominator },
+          { numerator, denominator },
           { numerator, denominator },
           { numerator, denominator },
           treasury.address,
@@ -437,6 +449,8 @@ describe('ERC721 Marketplace', () => {
           bidTimeIncrement,
           { numerator, denominator },
           { numerator, denominator },
+          { numerator, denominator },
+          { numerator, denominator },
           treasury.address,
         ])
       );
@@ -503,6 +517,8 @@ describe('ERC721 Marketplace', () => {
           bidTimeIncrement,
           { numerator, denominator },
           { numerator, denominator },
+          { numerator, denominator },
+          { numerator, denominator },
           treasury.address,
         ])
       );
@@ -554,6 +570,8 @@ describe('ERC721 Marketplace', () => {
       marketplace = <ERC721Marketplace>(
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
+          { numerator, denominator },
+          { numerator, denominator },
           { numerator, denominator },
           { numerator, denominator },
           treasury.address,
@@ -609,6 +627,8 @@ describe('ERC721 Marketplace', () => {
           bidTimeIncrement,
           { numerator, denominator },
           { numerator, denominator },
+          { numerator, denominator },
+          { numerator, denominator },
           treasury.address,
         ])
       );
@@ -662,6 +682,8 @@ describe('ERC721 Marketplace', () => {
       marketplace = <ERC721Marketplace>(
         await upgrades.deployProxy(factory, [
           bidTimeIncrement,
+          { numerator, denominator },
+          { numerator, denominator },
           { numerator, denominator },
           { numerator, denominator },
           treasury.address,
