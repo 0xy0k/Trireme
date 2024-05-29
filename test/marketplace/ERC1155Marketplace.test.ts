@@ -170,6 +170,52 @@ describe('ERC1155 Marketplace', () => {
       expect(await mockNFT.balanceOf(escrow, tokenId)).to.be.equal(1);
     });
   });
+  describe('Discount', () => {
+    const oracle = '0x33b2CBD4cE2bc31f8650CEAbfB471A6ff8d6AFC9';
+
+    beforeEach(async () => {
+      const factory = await ethers.getContractFactory('ERC1155Marketplace');
+      marketplace = <ERC1155Marketplace>(
+        await upgrades.deployProxy(factory, [
+          bidTimeIncrement,
+          { numerator, denominator },
+          { numerator, denominator },
+          { numerator, denominator },
+          { numerator, denominator },
+          treasury.address,
+          mockNFT.address,
+        ])
+      );
+      await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
+      await marketplace.enableDiscount(true);
+      await marketplace.setOracle(mockNFT.address, oracle);
+
+      await mockNFT.mint(owner.address, tokenId, 1);
+      await mockNFT.setApprovalForAll(marketplace.address, true);
+    });
+    it('should be able to list nft', async () => {
+      const nftPrice = await marketplace.getNftPriceInETH(mockNFT.address);
+      await marketplace.listSale(
+        owner.address,
+        mockNFT.address,
+        tokenId,
+        nftPrice
+      );
+    });
+    it('should be reverted when listing under premium price', async () => {
+      const nftPrice = await marketplace.getNftPriceInETH(mockNFT.address);
+      const listingPrice = nftPrice.mul(numerator).div(denominator);
+
+      await expect(
+        marketplace.listSale(
+          owner.address,
+          mockNFT.address,
+          tokenId,
+          listingPrice.sub(1)
+        )
+      ).to.be.revertedWith('InvalidAmount');
+    });
+  });
   describe('Bid', async () => {
     let auctionId: BigNumber;
     beforeEach(async () => {
@@ -765,52 +811,6 @@ describe('ERC1155 Marketplace', () => {
         listingPrice.sub(tax)
       );
       expect(afterTreasuryBal).to.be.equal(beforeTreasuryBal.add(tax));
-    });
-  });
-  describe('Discount', () => {
-    const oracle = '0x33b2CBD4cE2bc31f8650CEAbfB471A6ff8d6AFC9';
-
-    beforeEach(async () => {
-      const factory = await ethers.getContractFactory('ERC1155Marketplace');
-      marketplace = <ERC1155Marketplace>(
-        await upgrades.deployProxy(factory, [
-          bidTimeIncrement,
-          { numerator, denominator },
-          { numerator, denominator },
-          { numerator, denominator },
-          { numerator, denominator },
-          treasury.address,
-          mockNFT.address,
-        ])
-      );
-      await marketplace.grantRole(WHITELISTED_ROLE, owner.address);
-      await marketplace.enableDiscount(true);
-      await marketplace.setOracle(mockNFT.address, oracle);
-
-      await mockNFT.mint(owner.address, tokenId, 1);
-      await mockNFT.setApprovalForAll(marketplace.address, true);
-    });
-    it('should be able to list nft', async () => {
-      const nftPrice = await marketplace.getNftPriceInETH(mockNFT.address);
-      await marketplace.listSale(
-        owner.address,
-        mockNFT.address,
-        tokenId,
-        nftPrice
-      );
-    });
-    it('should be reverted when listing under premium price', async () => {
-      const nftPrice = await marketplace.getNftPriceInETH(mockNFT.address);
-      const listingPrice = nftPrice.mul(numerator).div(denominator);
-
-      await expect(
-        marketplace.listSale(
-          owner.address,
-          mockNFT.address,
-          tokenId,
-          listingPrice.sub(1)
-        )
-      ).to.be.revertedWith('InvalidAmount');
     });
   });
 });

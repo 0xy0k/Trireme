@@ -135,6 +135,7 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         if (_nft == address(0)) revert InvalidSale(_saleIndex);
         if (sale.buyer != address(0)) revert InvalidSale(_saleIndex);
         if (msg.value < sale.price) revert InvalidAmount();
+        if (!isSaleValid(_saleIndex)) revert InvalidSale(_saleIndex);
 
         sale.buyer = msg.sender;
         userSales[sale.owner].remove(_saleIndex);
@@ -172,6 +173,17 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         return userSales[_account].values();
     }
 
+    function isSaleValid(uint _saleIndex) public view returns (bool) {
+        Sale memory sale = sales[_saleIndex];
+        uint premiumPrice = _getPremiumPrice(
+            sale.nftAddress,
+            sale.nftIndex,
+            saleDiscountRate
+        );
+
+        return sale.price >= premiumPrice;
+    }
+
     /// @notice Allows admins to set the maximum discount rate for sales.
     /// @param _newDiscountRate The new discount rate.
     function _setSalesDiscountRate(
@@ -200,5 +212,5 @@ abstract contract MarketplaceSale is Initializable, MarketplaceBase {
         address nft,
         uint tokenId,
         RateLib.Rate memory rate
-    ) internal virtual returns (uint price);
+    ) internal view virtual returns (uint price);
 }
