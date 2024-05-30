@@ -297,7 +297,7 @@ contract ERC1155Marketplace is
         uint price = getNftPriceInETH(nft);
         uint premiumPrice = rate.calculate(price);
         if (nft == guardianNFT) {
-            premiumPrice /= SIZES[tokenId];
+            premiumPrice = (premiumPrice * SIZES[tokenId]) / 100;
         }
         return premiumPrice;
     }
