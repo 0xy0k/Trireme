@@ -6,7 +6,7 @@ contract MockERC20 is ERC20 {
     constructor(
         string memory _name,
         string memory _symbol
-    ) public ERC20(_name, _symbol) {}
+    ) ERC20(_name, _symbol) {}
 
     function mint(address _account, uint256 _amount) public returns (bool) {
         _mint(_account, _amount);
