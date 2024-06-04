@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 
 import {IERC20} from '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import {SafeERC20} from '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import {Address} from '@openzeppelin/contracts/utils/Address.sol';
 import {IERC20Metadata} from '@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol';
 import {ERC1155} from '@openzeppelin/contracts/token/ERC1155/ERC1155.sol';
 import {ERC1155PausableUpgradeable} from '@openzeppelin/contracts-upgradeable/token/ERC1155/extensions/ERC1155PausableUpgradeable.sol';
@@ -25,6 +26,7 @@ error INVALID_PARAM();
 error INVALID_FEE_TOKEN();
 error ONLY_BOND();
 error ONLY_OBELISK();
+error NOT_WHITELISTED();
 
 contract Guardian is
     ERC1155PausableUpgradeable,
@@ -130,12 +132,18 @@ contract Guardian is
     address public lpFeeReceiver;
     IZap public zap;
 
+    mapping(address => bool) public isWhitelisted;
+
     /* ======== EVENTS ======== */
 
     event MintLimit(uint256 limit);
     event Treasury(address treasury);
-    event TxnFee(uint256 fee);
-    event ClaimFee(uint256 fee);
+    event SetFee(
+        uint256 txnFee,
+        uint256 claimFee,
+        uint256 tributeFeeForTrireme,
+        uint256 tributeFeeForETH
+    );
     event AddFeeTokens(address[] tokens);
     event RemoveFeeTokens(address[] tokens);
     event Mint(address indexed from, address indexed to, uint256 amount);
@@ -143,7 +151,6 @@ contract Guardian is
     event Split(address indexed from, address indexed to, uint256 amount);
     event Claim(address indexed from, uint256 reward, uint256 dividends);
     event Bond(address indexed to, uint256 amount);
-    event TributeFee(uint256 tributeFeeForTrireme, uint256 tributeFeeForETH);
 
     /* ======== INITIALIZATION ======== */
 
@@ -235,33 +242,18 @@ contract Guardian is
         emit Treasury(treasury_);
     }
 
-    function setTxnFee(uint256 fee) external onlyOwner {
-        if (fee == 0) revert INVALID_AMOUNT();
-
-        txnFee = fee;
-
-        emit TxnFee(fee);
-    }
-
-    function setClaimFee(uint256 fee) external onlyOwner {
-        if (fee >= PRECISION / 2) revert INVALID_AMOUNT();
-
-        claimFee = fee;
-
-        emit ClaimFee(fee);
-    }
-
-    function setTributeFee(
-        uint256 feeForTrireme,
-        uint256 feeForETH
+    function setFee(
+        uint256 _txnFee,
+        uint256 _claimFee,
+        uint256 _feeForTrireme,
+        uint256 _feeForETH
     ) external onlyOwner {
-        if ((feeForTrireme + feeForETH) >= PRECISION / 2)
-            revert INVALID_AMOUNT();
+        txnFee = _txnFee;
+        claimFee = _claimFee;
+        tributeFeeForTrireme = _feeForTrireme;
+        tributeFeeForETH = _feeForETH;
 
-        tributeFeeForTrireme = feeForTrireme;
-        tributeFeeForETH = feeForETH;
-
-        emit TributeFee(feeForTrireme, feeForETH);
+        emit SetFee(_txnFee, _claimFee, _feeForTrireme, _feeForETH);
     }
 
     function setZap(address zap_) external onlyOwner {
@@ -274,6 +266,10 @@ contract Guardian is
 
     function setPricePerGuardian(uint price) external onlyOwner {
         pricePerGuardian = price;
+    }
+
+    function setWhitelist(address vault, bool whitelist) external onlyOwner {
+        isWhitelisted[vault] = whitelist;
     }
 
     function setRewardRate(
@@ -484,6 +480,12 @@ contract Guardian is
         bytes memory data
     ) internal virtual override update {
         super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
+
+        if (
+            !isWhitelisted[from] && Address.isContract(to) && !isWhitelisted[to]
+        ) {
+            revert NOT_WHITELISTED();
+        }
 
         if (from == address(0) || to == address(0)) {
             return;
