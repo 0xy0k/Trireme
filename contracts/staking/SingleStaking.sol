@@ -42,6 +42,8 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     error InvalidStakingPeriod();
     error NoStaking(address user);
     error NotUnlocked(address user);
+    error NotLocked(address user);
+    error AlreadyLocked(address user);
 
     function initialize(
         IERC20Upgradeable _stakingToken,
@@ -65,17 +67,17 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
 
         // Transfer staking tokens from the user to the contract
         stakingToken.transferFrom(msg.sender, address(this), amount);
-        uint256 shares = calculateShares(amount, stakingPeriod);
 
         // Update user stake
         Stake storage stake = stakes[msg.sender];
-        if (stake.amount > 0) {
-            stake.rewardDebt += (stake.shares * rewardPerShare) / 1e18;
-        }
-        stake.amount += amount;
-        stake.shares += shares;
+        if (stake.amount > 0) revert AlreadyLocked(msg.sender);
+
+        uint256 shares = calculateShares(amount, stakingPeriod);
+        stake.amount = amount;
+        stake.shares = shares;
         stake.stakingPeriod = stakingPeriod;
         stake.startTime = block.timestamp;
+        stake.rewardDebt = (stake.shares * rewardPerShare) / 1e18;
 
         totalStaked += amount;
         totalShares += shares;
@@ -89,23 +91,16 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         Stake storage stake = stakes[msg.sender];
 
         if (stake.amount == 0) revert NoStaking(msg.sender);
-        if (block.timestamp < stake.startTime + stake.stakingPeriod)
-            revert NotUnlocked(msg.sender);
+        if (!isUnlocked(msg.sender)) revert NotUnlocked(msg.sender);
 
         uint256 amount = stake.amount;
         uint256 shares = stake.shares;
 
         // Calculate the user's pending rewards
-        uint256 pendingReward = (shares * rewardPerShare) /
-            1e18 -
-            stake.rewardDebt;
+        _claimRewards(msg.sender);
 
         // Reset the user's stake
-        stake.amount = 0;
-        stake.shares = 0;
-        stake.stakingPeriod = 0;
-        stake.startTime = 0;
-        stake.rewardDebt = 0;
+        delete stakes[msg.sender];
 
         totalStaked -= amount;
         totalShares -= shares;
@@ -113,75 +108,18 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         // Transfer the staked tokens and pending rewards back to the user
         stakingToken.transfer(msg.sender, amount);
 
-        if (pendingReward > 0) {
-            rewardToken.transfer(msg.sender, pendingReward);
-
-            emit Claimed(msg.sender, pendingReward);
-        }
-
         emit Withdrawn(msg.sender, amount);
     }
 
     function claim() external nonReentrant {
-        _updateRewards();
-
         Stake storage stake = stakes[msg.sender];
-
-        if (stake.amount == 0) revert NoStaking(msg.sender);
-
-        uint256 shares = stake.shares;
-
-        // Calculate the user's pending rewards
-        uint256 pendingReward = (shares * rewardPerShare) /
-            1e18 -
-            stake.rewardDebt;
-
-        // Update reward debt
-        stake.rewardDebt = (shares * rewardPerShare) / 1e18;
-
-        // Transfer the pending rewards to the user
-        if (pendingReward > 0) {
-            rewardToken.transfer(msg.sender, pendingReward);
-
-            emit Claimed(msg.sender, pendingReward);
-        }
-    }
-
-    function extendStakingPeriod(
-        uint256 newStakingPeriod
-    ) external nonReentrant {
-        if (
-            newStakingPeriod < MIN_STAKING_PERIOD ||
-            newStakingPeriod > MAX_STAKING_PERIOD
-        ) revert InvalidStakingPeriod();
-
-        Stake storage stake = stakes[msg.sender];
-
         if (stake.amount == 0) revert NoStaking(msg.sender);
 
         _updateRewards();
-
-        uint256 additionalShares = calculateShares(
-            stake.amount,
-            newStakingPeriod - stake.stakingPeriod
-        );
-
-        stake.shares += additionalShares;
-        stake.stakingPeriod = newStakingPeriod;
-        totalShares += additionalShares;
-
-        emit ExtendsPeriod(msg.sender, newStakingPeriod);
+        _claimRewards(msg.sender);
     }
 
-    function addMoreStaking(
-        uint256 amount,
-        uint256 newStakingPeriod
-    ) external nonReentrant {
-        if (
-            newStakingPeriod < MIN_STAKING_PERIOD ||
-            newStakingPeriod > MAX_STAKING_PERIOD
-        ) revert InvalidStakingPeriod();
-
+    function addMoreStaking(uint256 amount) external nonReentrant {
         _updateRewards();
 
         // Transfer staking tokens from the user to the contract
@@ -189,22 +127,51 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
 
         Stake storage stake = stakes[msg.sender];
         if (stake.amount == 0) revert NoStaking(msg.sender);
+        if (isUnlocked(msg.sender)) revert NotLocked(msg.sender);
 
-        uint256 newShares = calculateShares(
-            stake.amount + amount,
-            newStakingPeriod
+        uint256 additionalShares = calculateShares(
+            amount,
+            stake.startTime + stake.stakingPeriod - block.timestamp
         );
 
-        totalShares = totalShares - stake.shares + newShares;
+        totalShares += additionalShares;
         totalStaked += amount;
 
         stake.amount += amount;
-        stake.shares = newShares;
-        stake.stakingPeriod = newStakingPeriod;
-        stake.startTime = block.timestamp;
-        stake.rewardDebt = (stake.shares * rewardPerShare) / 1e18;
+        stake.shares += additionalShares;
+        stake.rewardDebt =
+            (additionalShares * rewardPerShare) /
+            1e18 +
+            stake.rewardDebt;
 
-        emit Staked(msg.sender, amount, newStakingPeriod);
+        emit Staked(msg.sender, amount, stake.stakingPeriod);
+    }
+
+    function extendStakingPeriod(
+        uint256 newStakingPeriod
+    ) external nonReentrant {
+        Stake storage stake = stakes[msg.sender];
+
+        if (stake.amount == 0) revert NoStaking(msg.sender);
+        if (isUnlocked(msg.sender)) revert NotLocked(msg.sender);
+        if (
+            newStakingPeriod < MIN_STAKING_PERIOD ||
+            newStakingPeriod <
+            stake.startTime + stake.stakingPeriod - block.timestamp ||
+            newStakingPeriod > MAX_STAKING_PERIOD
+        ) revert InvalidStakingPeriod();
+
+        _updateRewards();
+        _claimRewards(msg.sender);
+
+        uint256 newShares = calculateShares(stake.amount, newStakingPeriod);
+
+        totalShares = totalShares - stake.shares + newShares;
+        stake.shares = newShares;
+        stake.stakingPeriod += newStakingPeriod;
+        stake.rewardDebt = (newShares * rewardPerShare) / 1e18;
+
+        emit ExtendsPeriod(msg.sender, newStakingPeriod);
     }
 
     function relock(uint256 newStakingPeriod) external nonReentrant {
@@ -216,14 +183,11 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         Stake storage stake = stakes[msg.sender];
 
         if (stake.amount == 0) revert NoStaking(msg.sender);
-        if (block.timestamp < stake.startTime + stake.stakingPeriod)
-            revert NotUnlocked(msg.sender);
+        if (!isUnlocked(msg.sender)) revert NotUnlocked(msg.sender);
 
         _updateRewards();
+        _claimRewards(msg.sender);
 
-        uint256 pendingReward = (stake.shares * rewardPerShare) /
-            1e18 -
-            stake.rewardDebt;
         uint256 newShares = calculateShares(stake.amount, newStakingPeriod);
 
         totalShares = totalShares - stake.shares + newShares;
@@ -231,14 +195,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         stake.shares = newShares;
         stake.stakingPeriod = newStakingPeriod;
         stake.startTime = block.timestamp;
-        stake.rewardDebt = (stake.shares * rewardPerShare) / 1e18;
-
-        // Transfer the pending rewards to the user
-        if (pendingReward > 0) {
-            rewardToken.transfer(msg.sender, pendingReward);
-
-            emit Claimed(msg.sender, pendingReward);
-        }
+        stake.rewardDebt = (newShares * rewardPerShare) / 1e18;
 
         emit Relocked(msg.sender, newStakingPeriod);
     }
@@ -258,10 +215,24 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         emit RewardsAdded(amount);
     }
 
+    function updateRewards() external {
+        _updateRewards();
+    }
+
     function _updateRewards() internal {
         if (totalShares > 0 && lastRewardAmount > 0) {
             rewardPerShare += (lastRewardAmount * 1e18) / totalShares;
             lastRewardAmount = 0;
+        }
+    }
+
+    function _claimRewards(address user) internal {
+        Stake storage stake = stakes[user];
+        uint pendingReward = pendingRewards(user);
+        if (pendingReward > 0) {
+            rewardToken.transfer(user, pendingReward);
+            stake.rewardDebt = (stake.shares * rewardPerShare) / 1e18;
+            emit Claimed(user, pendingReward);
         }
     }
 
@@ -270,6 +241,20 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         uint256 stakingPeriod
     ) public pure returns (uint256) {
         return (amount * stakingPeriod) / MAX_STAKING_PERIOD;
+    }
+
+    function pendingRewards(address user) public view returns (uint) {
+        Stake storage stake = stakes[user];
+        uint256 rewards = (stake.shares * rewardPerShare) /
+            1e18 -
+            stake.rewardDebt;
+        return rewards;
+    }
+
+    function isUnlocked(address user) public view returns (bool) {
+        Stake storage stake = stakes[user];
+
+        return block.timestamp >= stake.startTime + stake.stakingPeriod;
     }
 
     function getUserStake(
