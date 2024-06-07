@@ -225,7 +225,7 @@ contract ERC1155Marketplace is
 
         if (to == address(this)) {
             // Create a new escrow
-            MarketplaceEscrow escrow = new MarketplaceEscrow();
+            MarketplaceEscrow escrow = new MarketplaceEscrow(nft);
             escrows[key] = address(escrow);
             IERC1155Upgradeable(nft).safeTransferFrom(
                 from,
@@ -239,7 +239,7 @@ contract ERC1155Marketplace is
             MarketplaceEscrow escrow = MarketplaceEscrow(escrows[key]);
             if (address(escrow) == address(0)) revert NoEscrow(tokenId);
 
-            escrow.refundAsset(nft, tokenId, to);
+            IERC1155(nft).safeTransferFrom(address(escrow), to, tokenId, 1, '');
         }
     }
 

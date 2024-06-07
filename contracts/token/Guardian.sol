@@ -481,10 +481,14 @@ contract Guardian is
     ) internal virtual override update {
         super._beforeTokenTransfer(operator, from, to, ids, amounts, data);
 
-        if (
-            !isWhitelisted[from] && Address.isContract(to) && !isWhitelisted[to]
-        ) {
-            revert NOT_WHITELISTED();
+        if (Address.isContract(operator)) {
+            if (!isWhitelisted[operator]) {
+                revert NOT_WHITELISTED();
+            }
+        } else {
+            if (Address.isContract(to) && !isWhitelisted[to]) {
+                revert NOT_WHITELISTED();
+            }
         }
 
         if (from == address(0) || to == address(0)) {
