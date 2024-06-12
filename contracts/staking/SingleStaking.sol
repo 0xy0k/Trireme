@@ -28,7 +28,6 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     mapping(address => Stake) public stakes;
 
     uint256 public rewardPerShare;
-    uint256 public lastRewardAmount;
     uint256 public lastRewardTime;
     uint256 public lastRewardRate;
 
@@ -55,6 +54,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
 
         stakingToken = _stakingToken;
         rewardToken = _rewardToken;
+        lastRewardTime = block.timestamp;
     }
 
     function lock(uint256 amount, uint256 stakingPeriod) external nonReentrant {
@@ -62,8 +62,6 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
             stakingPeriod < MIN_STAKING_PERIOD ||
             stakingPeriod > MAX_STAKING_PERIOD
         ) revert InvalidStakingPeriod();
-
-        _updateRewards();
 
         // Transfer staking tokens from the user to the contract
         stakingToken.transferFrom(msg.sender, address(this), amount);
@@ -86,8 +84,6 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     }
 
     function unlock() external nonReentrant {
-        _updateRewards();
-
         Stake storage stake = stakes[msg.sender];
 
         if (stake.amount == 0) revert NoStaking(msg.sender);
@@ -115,13 +111,10 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         Stake storage stake = stakes[msg.sender];
         if (stake.amount == 0) revert NoStaking(msg.sender);
 
-        _updateRewards();
         _claimRewards(msg.sender);
     }
 
     function addMoreStaking(uint256 amount) external nonReentrant {
-        _updateRewards();
-
         // Transfer staking tokens from the user to the contract
         stakingToken.transferFrom(msg.sender, address(this), amount);
 
@@ -161,7 +154,6 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
             newStakingPeriod > MAX_STAKING_PERIOD
         ) revert InvalidStakingPeriod();
 
-        _updateRewards();
         _claimRewards(msg.sender);
 
         uint256 newShares = calculateShares(stake.amount, newStakingPeriod);
@@ -185,7 +177,6 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         if (stake.amount == 0) revert NoStaking(msg.sender);
         if (!isUnlocked(msg.sender)) revert NotUnlocked(msg.sender);
 
-        _updateRewards();
         _claimRewards(msg.sender);
 
         uint256 newShares = calculateShares(stake.amount, newStakingPeriod);
@@ -202,28 +193,14 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
 
     function addRewards(uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
         rewardToken.transferFrom(msg.sender, address(this), amount);
-        _updateRewards();
 
-        if (lastRewardTime != 0) {
-            lastRewardRate =
-                lastRewardAmount /
-                (block.timestamp - lastRewardTime);
+        if (totalShares > 0 && amount > 0) {
+            rewardPerShare += (amount * 1e18) / totalShares;
         }
+        lastRewardRate = amount / (block.timestamp - lastRewardTime);
         lastRewardTime = block.timestamp;
-        lastRewardAmount = amount;
 
         emit RewardsAdded(amount);
-    }
-
-    function updateRewards() external {
-        _updateRewards();
-    }
-
-    function _updateRewards() internal {
-        if (totalShares > 0 && lastRewardAmount > 0) {
-            rewardPerShare += (lastRewardAmount * 1e18) / totalShares;
-            lastRewardAmount = 0;
-        }
     }
 
     function _claimRewards(address user) internal {

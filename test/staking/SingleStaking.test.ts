@@ -279,7 +279,6 @@ describe('Single Staking', () => {
 
       await rewardToken.mint(owner.address, rewardAmount);
       await staking.addRewards(rewardAmount);
-      await staking.updateRewards();
       expect(await staking.pendingRewards(owner.address)).to.be.closeTo(
         rewardAmount.add(rewardAmount.div(2)),
         100
@@ -291,7 +290,6 @@ describe('Single Staking', () => {
 
       await stakingToken.mint(owner.address, stakingAmount);
       await staking.addMoreStaking(stakingAmount);
-      await staking.updateRewards();
 
       let pendingReward1 = await staking.pendingRewards(owner.address);
       let pendingReward2 = await staking.pendingRewards(user1.address);
@@ -304,7 +302,6 @@ describe('Single Staking', () => {
 
       await rewardToken.mint(owner.address, rewardAmount);
       await staking.addRewards(rewardAmount);
-      await staking.updateRewards();
 
       pendingReward1 = await staking.pendingRewards(owner.address);
       pendingReward2 = await staking.pendingRewards(user1.address);
@@ -358,7 +355,6 @@ describe('Single Staking', () => {
 
       await rewardToken.mint(owner.address, rewardAmount);
       await staking.addRewards(rewardAmount);
-      await staking.updateRewards();
       let pendingReward1 = await staking.pendingRewards(owner.address);
       let pendingReward2 = await staking.pendingRewards(user1.address);
       expect(pendingReward1).to.be.closeTo(
@@ -376,7 +372,6 @@ describe('Single Staking', () => {
 
       await rewardToken.mint(owner.address, rewardAmount);
       await staking.addRewards(rewardAmount);
-      await staking.updateRewards();
 
       pendingReward1 = await staking.pendingRewards(owner.address);
       pendingReward2 = await staking.pendingRewards(user1.address);
