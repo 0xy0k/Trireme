@@ -64,7 +64,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         ) revert InvalidStakingPeriod();
 
         // Transfer staking tokens from the user to the contract
-        stakingToken.transferFrom(msg.sender, address(this), amount);
+        stakingToken.safeTransferFrom(msg.sender, address(this), amount);
 
         // Update user stake
         Stake storage stake = stakes[msg.sender];
@@ -102,7 +102,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         totalShares -= shares;
 
         // Transfer the staked tokens and pending rewards back to the user
-        stakingToken.transfer(msg.sender, amount);
+        stakingToken.safeTransfer(msg.sender, amount);
 
         emit Withdrawn(msg.sender, amount);
     }
@@ -116,7 +116,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
 
     function addMoreStaking(uint256 amount) external nonReentrant {
         // Transfer staking tokens from the user to the contract
-        stakingToken.transferFrom(msg.sender, address(this), amount);
+        stakingToken.safeTransferFrom(msg.sender, address(this), amount);
 
         Stake storage stake = stakes[msg.sender];
         if (stake.amount == 0) revert NoStaking(msg.sender);
@@ -192,7 +192,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     }
 
     function addRewards(uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        rewardToken.transferFrom(msg.sender, address(this), amount);
+        rewardToken.safeTransferFrom(msg.sender, address(this), amount);
 
         if (totalShares > 0 && amount > 0) {
             rewardPerShare += (amount * 1e18) / totalShares;
@@ -207,7 +207,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         Stake storage stake = stakes[user];
         uint pendingReward = pendingRewards(user);
         if (pendingReward > 0) {
-            rewardToken.transfer(user, pendingReward);
+            rewardToken.safeTransfer(user, pendingReward);
             stake.rewardDebt = (stake.shares * rewardPerShare) / 1e18;
             emit Claimed(user, pendingReward);
         }
