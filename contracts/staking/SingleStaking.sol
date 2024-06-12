@@ -149,8 +149,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         if (isUnlocked(msg.sender)) revert NotLocked(msg.sender);
         if (
             newStakingPeriod < MIN_STAKING_PERIOD ||
-            newStakingPeriod <
-            stake.startTime + stake.stakingPeriod - block.timestamp ||
+            newStakingPeriod < stake.stakingPeriod ||
             newStakingPeriod > MAX_STAKING_PERIOD
         ) revert InvalidStakingPeriod();
 
