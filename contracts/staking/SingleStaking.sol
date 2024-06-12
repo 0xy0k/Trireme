@@ -160,7 +160,8 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
 
         totalShares = totalShares - stake.shares + newShares;
         stake.shares = newShares;
-        stake.stakingPeriod += newStakingPeriod;
+        stake.startTime = block.timestamp;
+        stake.stakingPeriod = newStakingPeriod;
         stake.rewardDebt = (newShares * rewardPerShare) / 1e18;
 
         emit ExtendsPeriod(msg.sender, newStakingPeriod);
