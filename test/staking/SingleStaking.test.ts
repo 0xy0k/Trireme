@@ -259,6 +259,8 @@ describe('Single Staking', () => {
       await stakingToken
         .connect(user1)
         .approve(staking.address, constants.MaxUint256);
+
+      await staking.enableMoreStaking(true);
     });
     it('should revert staking more when never staked before', async () => {
       await expect(staking.connect(user1).unlock()).to.be.revertedWith(
@@ -335,6 +337,8 @@ describe('Single Staking', () => {
       await stakingToken
         .connect(user1)
         .approve(staking.address, constants.MaxUint256);
+
+      await staking.enableExtendPeriod(true);
     });
     it('should revert staking more when never staked before', async () => {
       await expect(

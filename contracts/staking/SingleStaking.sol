@@ -31,6 +31,10 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     uint256 public lastRewardTime;
     uint256 public lastRewardRate;
 
+    bool public extendPeriodEnabled;
+    bool public moreStakingEnabled;
+    bool public relockEnabled;
+
     event Staked(address indexed user, uint amount, uint lockPeriod);
     event Withdrawn(address indexed user, uint amount);
     event Claimed(address indexed user, uint rewards);
@@ -43,6 +47,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     error NotUnlocked(address user);
     error NotLocked(address user);
     error AlreadyLocked(address user);
+    error Disabled();
 
     function initialize(
         IERC20Upgradeable _stakingToken,
@@ -115,6 +120,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     }
 
     function addMoreStaking(uint256 amount) external nonReentrant {
+        if (!moreStakingEnabled) revert Disabled();
         // Transfer staking tokens from the user to the contract
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
 
@@ -143,6 +149,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     function extendStakingPeriod(
         uint256 newStakingPeriod
     ) external nonReentrant {
+        if (!extendPeriodEnabled) revert Disabled();
         Stake storage stake = stakes[msg.sender];
 
         if (stake.amount == 0) revert NoStaking(msg.sender);
@@ -167,6 +174,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     }
 
     function relock(uint256 newStakingPeriod) external nonReentrant {
+        if (!relockEnabled) revert Disabled();
         if (
             newStakingPeriod < MIN_STAKING_PERIOD ||
             newStakingPeriod > MAX_STAKING_PERIOD
@@ -211,6 +219,22 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
             stake.rewardDebt = (stake.shares * rewardPerShare) / 1e18;
             emit Claimed(user, pendingReward);
         }
+    }
+
+    function enableRelock(bool enable) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        relockEnabled = enable;
+    }
+
+    function enableExtendPeriod(
+        bool enable
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        extendPeriodEnabled = enable;
+    }
+
+    function enableMoreStaking(
+        bool enable
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        moreStakingEnabled = enable;
     }
 
     function calculateShares(
