@@ -8,6 +8,11 @@ import '../../../interfaces/origin/IOETH.sol';
 import '../../../interfaces/origin/IOETHVault.sol';
 
 contract OETHValueProviderETH is ERC20ValueProviderETH {
+    error OutOfPriceRange();
+
+    uint256 public minPrice;
+    uint256 public maxPrice;
+
     /// @notice This function is only called once during deployment of the proxy contract. It's not called after upgrades.
     /// @param _aggregator The token oracles aggregator
     /// @param _token The token address
@@ -17,7 +22,9 @@ contract OETHValueProviderETH is ERC20ValueProviderETH {
         IChainlinkV3Aggregator _aggregator,
         IERC20MetadataUpgradeable _token,
         RateLib.Rate calldata _baseCreditLimitRate,
-        RateLib.Rate calldata _baseLiquidationLimitRate
+        RateLib.Rate calldata _baseLiquidationLimitRate,
+        uint256 _minPrice,
+        uint256 _maxPrice
     ) external initializer {
         __initialize(
             _aggregator,
@@ -25,13 +32,28 @@ contract OETHValueProviderETH is ERC20ValueProviderETH {
             _baseCreditLimitRate,
             _baseLiquidationLimitRate
         );
+        minPrice = _minPrice;
+        maxPrice = _maxPrice;
+    }
+
+    function setMinMaxPrice(
+        uint256 _minPrice,
+        uint256 _maxPrice
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        minPrice = _minPrice;
+        maxPrice = _maxPrice;
     }
 
     /// @return priceETH The value for the collection, in ETH.
-    function getPriceETH() public view override returns (uint256) {
+    function getPriceETH() public view override returns (uint256 priceETH) {
         uint256 totalSupply = IOETH(address(token)).totalSupply();
         address vaultAddress = IOETH(address(token)).vaultAddress();
         uint256 totalValue = IOETHVault(vaultAddress).totalValue();
-        return (totalValue * 1 ether) / totalSupply;
+
+        priceETH = (totalValue * 1 ether) / totalSupply;
+
+        if (priceETH < minPrice || priceETH > maxPrice) {
+            revert OutOfPriceRange();
+        }
     }
 }
