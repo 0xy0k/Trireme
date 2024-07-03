@@ -5,6 +5,15 @@ import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol'
 import '@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol';
 import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
 
+interface IStakingV2 {
+    function migrateFromV1(
+        address account,
+        uint amount,
+        uint period,
+        uint startedFrom
+    ) external;
+}
+
 contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
@@ -31,9 +40,12 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     uint256 public lastRewardTime;
     uint256 public lastRewardRate;
 
+    bool public paused;
     bool public extendPeriodEnabled;
     bool public moreStakingEnabled;
     bool public relockEnabled;
+
+    address public stakingV2;
 
     event Staked(address indexed user, uint amount, uint lockPeriod);
     event Withdrawn(address indexed user, uint amount);
@@ -49,6 +61,11 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     error AlreadyLocked(address user);
     error Disabled();
 
+    modifier whenNotPaused() {
+        require(!paused, 'Paused');
+        _;
+    }
+
     function initialize(
         IERC20Upgradeable _stakingToken,
         IERC20Upgradeable _rewardToken
@@ -62,7 +79,10 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         lastRewardTime = block.timestamp;
     }
 
-    function lock(uint256 amount, uint256 stakingPeriod) external nonReentrant {
+    function lock(
+        uint256 amount,
+        uint256 stakingPeriod
+    ) external nonReentrant whenNotPaused {
         if (
             stakingPeriod < MIN_STAKING_PERIOD ||
             stakingPeriod > MAX_STAKING_PERIOD
@@ -88,7 +108,7 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         emit Staked(msg.sender, amount, stakingPeriod);
     }
 
-    function unlock() external nonReentrant {
+    function unlock() external nonReentrant whenNotPaused {
         Stake storage stake = stakes[msg.sender];
 
         if (stake.amount == 0) revert NoStaking(msg.sender);
@@ -119,7 +139,9 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         _claimRewards(msg.sender);
     }
 
-    function addMoreStaking(uint256 amount) external nonReentrant {
+    function addMoreStaking(
+        uint256 amount
+    ) external nonReentrant whenNotPaused {
         if (!moreStakingEnabled) revert Disabled();
         // Transfer staking tokens from the user to the contract
         stakingToken.safeTransferFrom(msg.sender, address(this), amount);
@@ -199,7 +221,31 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
         emit Relocked(msg.sender, newStakingPeriod);
     }
 
-    function addRewards(uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function migrate() external nonReentrant {
+        Stake storage stake = stakes[msg.sender];
+        if (stake.amount == 0) revert NoStaking(msg.sender);
+
+        _claimRewards(msg.sender);
+        stakingToken.safeTransfer(stakingV2, stake.amount);
+        IStakingV2(stakingV2).migrateFromV1(
+            msg.sender,
+            stake.amount,
+            stake.stakingPeriod,
+            stake.startTime
+        );
+        delete stakes[msg.sender];
+    }
+
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        extendPeriodEnabled = false;
+        moreStakingEnabled = false;
+        relockEnabled = false;
+        paused = true;
+    }
+
+    function addRewards(
+        uint256 amount
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) whenNotPaused {
         rewardToken.safeTransferFrom(msg.sender, address(this), amount);
 
         if (totalShares > 0 && amount > 0) {
@@ -219,6 +265,12 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
             stake.rewardDebt = (stake.shares * rewardPerShare) / 1e18;
             emit Claimed(user, pendingReward);
         }
+    }
+
+    function setStakingV2(
+        address _stakingV2
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        stakingV2 = _stakingV2;
     }
 
     function enableRelock(bool enable) external onlyRole(DEFAULT_ADMIN_ROLE) {
