@@ -40,10 +40,10 @@ contract SingleStaking is ReentrancyGuardUpgradeable, AccessControlUpgradeable {
     uint256 public lastRewardTime;
     uint256 public lastRewardRate;
 
-    bool public paused;
     bool public extendPeriodEnabled;
     bool public moreStakingEnabled;
     bool public relockEnabled;
+    bool public paused;
 
     address public stakingV2;
 

@@ -43,7 +43,6 @@ contract SingleStakingV2 is
     uint256 public rewardPerShare;
     uint256 public lastRewardTime;
     uint256 public lastRewardRate;
-    uint256 public stakingProfits;
 
     bool public extendPeriodEnabled;
     bool public moreStakingEnabled;
@@ -333,14 +332,6 @@ contract SingleStakingV2 is
         lastRewardTime = block.timestamp;
 
         emit RewardsAdded(amount);
-    }
-
-    function withdrawProfits(address to) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint profits = stakingProfits;
-        stakingProfits = 0;
-        stakingToken.safeTransfer(to, profits);
-
-        emit ProfitsWithdrawn(to, profits);
     }
 
     function setStakingV1(
