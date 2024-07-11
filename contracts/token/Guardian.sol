@@ -706,6 +706,37 @@ contract Guardian is
         emit Claim(account, reward, dividends);
     }
 
+    /// @dev claim usdc rewards only
+    function claimUSDC() external update {
+        address account = _msgSender();
+        uint256 totalBalance = totalBalanceOf[account];
+
+        if (totalBalance == 0) return;
+
+        // update reward
+        (
+            RewardInfo storage rewardInfo,
+            RewardInfo storage dividendsInfo
+        ) = _updateReward(account);
+
+        rewardInfo.debt = accTokenPerShare * totalBalance;
+        dividendsInfo.debt = (dividendsPerShare * totalBalance) / MULTIPLIER;
+
+        // transfer pending (USDC)
+        uint256 dividends = _min(
+            dividendsInfo.pending,
+            USDC.balanceOf(address(this))
+        );
+        if (dividends > 0) {
+            unchecked {
+                dividendsInfo.pending -= dividends;
+            }
+            USDC.safeTransfer(account, dividends);
+        }
+
+        emit Claim(account, 0, dividends);
+    }
+
     function receiveReward() external payable override {
         if (msg.value == 0) return;
 
