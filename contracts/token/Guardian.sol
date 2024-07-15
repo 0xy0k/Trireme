@@ -230,16 +230,12 @@ contract Guardian is
         if (limit == 0) revert INVALID_AMOUNT();
 
         mintLimit = limit;
-
-        emit MintLimit(limit);
     }
 
     function setTreasury(address treasury_) external onlyOwner {
         if (treasury_ == address(0)) revert INVALID_ADDRESS();
 
         treasury = treasury_;
-
-        emit Treasury(treasury_);
     }
 
     function setFee(
@@ -252,8 +248,6 @@ contract Guardian is
         claimFee = _claimFee;
         tributeFeeForTrireme = _feeForTrireme;
         tributeFeeForETH = _feeForETH;
-
-        emit SetFee(_txnFee, _claimFee, _feeForTrireme, _feeForETH);
     }
 
     function setZap(address zap_) external onlyOwner {
@@ -287,8 +281,6 @@ contract Guardian is
                 ++i;
             }
         }
-
-        emit AddFeeTokens(tokens);
     }
 
     function removeFeeTokens(address[] calldata tokens) external onlyOwner {
@@ -300,8 +292,6 @@ contract Guardian is
                 ++i;
             }
         }
-
-        emit RemoveFeeTokens(tokens);
     }
 
     function pause() external onlyOwner {
