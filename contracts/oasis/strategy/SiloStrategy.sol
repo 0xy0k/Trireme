@@ -1,25 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity 0.8.17;
 
-import '@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol';
+import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
+import '@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol';
 
-import './BaseStrategy.sol';
 import '../../interfaces/IStrategy.sol';
 import '../../interfaces/silo/ISilo.sol';
 
-contract SiloStrategy is IStrategy {
-    using SafeERC20 for IERC20;
-
-    address public vault;
-    IERC20 public uToken;
-    IERC20 public uCollateralToken;
-    ISilo public silo;
-
-    uint public totalShares;
+contract SiloStrategy is IStrategy, AccessControlUpgradeable {
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
     struct UserInfo {
         uint share;
     }
+
+    bytes32 internal constant DAO_ROLE = keccak256('DAO_ROLE');
+
+    address public vault;
+
+    /// @dev Underlying token to deposit on Silo
+    IERC20Upgradeable public uToken;
+    /// @dev Underlying collateral token that you receive when deposit uToken on Silo, (sth like silo share token)
+    IERC20Upgradeable public uCollateralToken;
+    ISilo public silo;
+
+    uint public totalShares;
 
     mapping(address => UserInfo) public userInfos;
 
@@ -28,11 +33,20 @@ contract SiloStrategy is IStrategy {
         _;
     }
 
-    constructor(address _uToken, address _silo) {
-        uToken = IERC20(_uToken);
+    function initialize(address _uToken, address _silo) external initializer {
+        __AccessControl_init();
+        _setupRole(DAO_ROLE, msg.sender);
+
+        uToken = IERC20Upgradeable(_uToken);
         silo = ISilo(_silo);
 
-        uCollateralToken = silo.assetStorage(_uToken).collateralToken;
+        uCollateralToken = IERC20Upgradeable(
+            address(silo.assetStorage(_uToken).collateralToken)
+        );
+    }
+
+    function setVault(address _vault) external onlyRole(DAO_ROLE) {
+        vault = _vault;
     }
 
     function deposit(
@@ -61,10 +75,9 @@ contract SiloStrategy is IStrategy {
         UserInfo storage userInfo = userInfos[_account];
         uint amountToWithdraw = toAmount(_shareAmount);
 
-        (withdrawn, ) = silo.withdraw(address(uToken), amountToWithdraw, false);
         userInfo.share -= _shareAmount;
         totalShares -= _shareAmount;
-
+        (withdrawn, ) = silo.withdraw(address(uToken), amountToWithdraw, false);
         uToken.transfer(msg.sender, withdrawn);
     }
 
