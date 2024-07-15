@@ -62,6 +62,7 @@ describe('ERC20 Vault', () => {
       vault = <ERC20Vault>await upgrades.deployProxy(factory, [
         stablecoin.address,
         mockToken.address,
+        constants.AddressZero,
         provider.address,
         {
           debtInterestApr: {
@@ -83,6 +84,7 @@ describe('ERC20 Vault', () => {
         upgrades.deployProxy(factory, [
           stablecoin.address,
           mockToken.address,
+          constants.AddressZero,
           provider.address,
           {
             debtInterestApr: {
@@ -102,6 +104,7 @@ describe('ERC20 Vault', () => {
         upgrades.deployProxy(factory, [
           stablecoin.address,
           mockToken.address,
+          constants.AddressZero,
           provider.address,
           {
             debtInterestApr: {
@@ -124,6 +127,7 @@ describe('ERC20 Vault', () => {
         upgrades.deployProxy(factory, [
           stablecoin.address,
           mockToken.address,
+          constants.AddressZero,
           provider.address,
           {
             debtInterestApr: {
@@ -143,6 +147,7 @@ describe('ERC20 Vault', () => {
         upgrades.deployProxy(factory, [
           stablecoin.address,
           mockToken.address,
+          constants.AddressZero,
           provider.address,
           {
             debtInterestApr: {
@@ -179,6 +184,7 @@ describe('ERC20 Vault', () => {
       vault = <ERC20Vault>await upgrades.deployProxy(factory, [
         stablecoin.address,
         mockToken.address,
+        constants.AddressZero,
         provider.address,
         {
           debtInterestApr: {
@@ -236,6 +242,7 @@ describe('ERC20 Vault', () => {
       vault = <ERC20Vault>await upgrades.deployProxy(factory, [
         stablecoin.address,
         mockToken.address,
+        constants.AddressZero,
         provider.address,
         {
           debtInterestApr: {
@@ -300,6 +307,7 @@ describe('ERC20 Vault', () => {
       vault = <ERC20Vault>await upgrades.deployProxy(factory, [
         stablecoin.address,
         mockToken.address,
+        constants.AddressZero,
         provider.address,
         {
           debtInterestApr: {
@@ -363,6 +371,7 @@ describe('ERC20 Vault', () => {
       vault = <ERC20Vault>await upgrades.deployProxy(factory, [
         stablecoin.address,
         mockToken.address,
+        constants.AddressZero,
         provider.address,
         {
           debtInterestApr: {
@@ -425,6 +434,7 @@ describe('ERC20 Vault', () => {
       vault = <ERC20Vault>await upgrades.deployProxy(factory, [
         stablecoin.address,
         mockToken.address,
+        constants.AddressZero,
         provider.address,
         {
           debtInterestApr: {
@@ -516,6 +526,7 @@ describe('ERC20 Vault', () => {
       vault = <ERC20Vault>await upgrades.deployProxy(factory, [
         stablecoin.address,
         mockToken.address,
+        constants.AddressZero,
         provider.address,
         {
           debtInterestApr: {

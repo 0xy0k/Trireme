@@ -29,12 +29,14 @@ contract ERC20VaultETH is ERC20Vault {
     function initialize(
         IStableCoin _stablecoin,
         IERC20Upgradeable _tokenContract,
+        IStrategy _strategy,
         address _valueProvider,
         VaultSettings calldata _settings
     ) external override initializer {
         __initialize(_stablecoin, _settings);
         tokenContract = _tokenContract;
         valueProvider = _valueProvider;
+        strategy = _strategy;
     }
 
     /// @dev Returns the credit limit
@@ -45,8 +47,12 @@ contract ERC20VaultETH is ERC20Vault {
         address _owner,
         uint256 _colAmount
     ) internal view override returns (uint256) {
+        uint _uAmount = _colAmount;
+        if (address(strategy) != address(0)) {
+            _uAmount = strategy.toAmount(_colAmount);
+        }
         uint256 creditLimitETH = ERC20ValueProviderETH(valueProvider)
-            .getCreditLimitETH(_owner, _colAmount);
+            .getCreditLimitETH(_owner, _uAmount);
         return creditLimitETH;
     }
 
@@ -58,8 +64,12 @@ contract ERC20VaultETH is ERC20Vault {
         address _owner,
         uint256 _colAmount
     ) internal view override returns (uint256) {
+        uint _uAmount = _colAmount;
+        if (address(strategy) != address(0)) {
+            _uAmount = strategy.toAmount(_colAmount);
+        }
         uint256 liquidationLimitETH = ERC20ValueProviderETH(valueProvider)
-            .getLiquidationLimitETH(_owner, _colAmount);
+            .getLiquidationLimitETH(_owner, _uAmount);
         return liquidationLimitETH;
     }
 }

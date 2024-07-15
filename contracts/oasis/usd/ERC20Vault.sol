@@ -59,8 +59,11 @@ contract ERC20Vault is AbstractAssetVault {
         if (_colAmount == 0) revert InvalidAmount(_colAmount);
 
         tokenContract.safeTransferFrom(_account, address(this), _colAmount);
-        tokenContract.safeApprove(address(strategy), _colAmount);
-        uint share = strategy.deposit(_account, _colAmount);
+        uint share = _colAmount;
+        if (address(strategy) != address(0)) {
+            tokenContract.safeApprove(address(strategy), _colAmount);
+            share = strategy.deposit(_account, _colAmount);
+        }
 
         Position storage position = positions[_account];
 
@@ -75,20 +78,23 @@ contract ERC20Vault is AbstractAssetVault {
     /// @dev See {removeCollateral}
     function _removeCollateral(
         address _account,
-        uint256 _colAmount
+        uint256 _colShare
     ) internal override {
         Position storage position = positions[_account];
 
         uint256 _debtAmount = _getDebtAmount(_account);
         uint256 _creditLimit = _getCreditLimit(
             _account,
-            position.collateral - _colAmount
+            position.collateral - _colShare
         );
 
         if (_debtAmount > _creditLimit) revert InsufficientCollateral();
 
-        uint withdrawn = strategy.withdraw(_account, _colAmount);
-        position.collateral -= _colAmount;
+        uint withdrawn = _colShare;
+        if (address(strategy) != address(0)) {
+            withdrawn = strategy.withdraw(_account, _colShare);
+        }
+        position.collateral -= _colShare;
 
         if (position.collateral == 0) {
             delete positions[_account];
@@ -134,28 +140,34 @@ contract ERC20Vault is AbstractAssetVault {
     /// @dev Returns the credit limit
     /// @param _owner The position owner
     /// @param _colAmount The collateral amount
-    /// @return The credit limit
+    /// @return creditLimitUSD The credit limit
     function _getCreditLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view virtual override returns (uint256) {
-        uint _uAmount = strategy.toAmount(_colAmount);
-        uint256 creditLimitUSD = ERC20ValueProvider(valueProvider)
-            .getCreditLimitUSD(_owner, _uAmount);
-        return creditLimitUSD;
+    ) internal view virtual override returns (uint256 creditLimitUSD) {
+        uint _uAmount = _colAmount;
+        if (address(strategy) != address(0)) {
+            _uAmount = strategy.toAmount(_colAmount);
+        }
+        creditLimitUSD = ERC20ValueProvider(valueProvider).getCreditLimitUSD(
+            _owner,
+            _uAmount
+        );
     }
 
     /// @dev Returns the minimum amount of debt necessary to liquidate the position
     /// @param _owner The position owner
     /// @param _colAmount The collateral amount
-    /// @return The minimum amount of debt to liquidate the position
+    /// @return liquidationLimitUSD The minimum amount of debt to liquidate the position
     function _getLiquidationLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view virtual override returns (uint256) {
-        uint _uAmount = strategy.toAmount(_colAmount);
-        uint256 liquidationLimitUSD = ERC20ValueProvider(valueProvider)
+    ) internal view virtual override returns (uint256 liquidationLimitUSD) {
+        uint _uAmount = _colAmount;
+        if (address(strategy) != address(0)) {
+            _uAmount = strategy.toAmount(_colAmount);
+        }
+        liquidationLimitUSD = ERC20ValueProvider(valueProvider)
             .getLiquidationLimitUSD(_owner, _uAmount);
-        return liquidationLimitUSD;
     }
 }
