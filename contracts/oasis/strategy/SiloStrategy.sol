@@ -87,6 +87,14 @@ contract SiloStrategy is IStrategy, AccessControlUpgradeable {
         return toAmount(userInfos[_account].share);
     }
 
+    function pendingRewards(
+        address _account
+    ) external view returns (address[] memory, uint256[] memory) {}
+
+    function claimRewards(address _account) external {
+        revert('SiloClaiming not supported');
+    }
+
     function toAmount(uint share) public view returns (uint) {
         ISilo.AssetStorage memory assetStorage = silo.assetStorage(
             address(uToken)

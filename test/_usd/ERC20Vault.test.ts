@@ -5,6 +5,7 @@ import {
   IERC20,
   IStrategy,
   MockERC20ValueProvider,
+  MockSilo,
   MockToken,
   TriremeUSD,
   SiloStrategy,
@@ -610,7 +611,7 @@ describe('ERC20 Vault', () => {
       });
     });
   });
-  describe('Strategy', () => {
+  describe('Silo Strategy', () => {
     const collAmount = parseEther('700');
     const borrowAmount = parseEther('100');
     const SETTER_ROLE =
@@ -686,6 +687,111 @@ describe('ERC20 Vault', () => {
       const beforeSiloUsdcBal = await usdc.balanceOf(USDC_SILO);
       await vault.removeCollateral(position.collateral);
       const afterSiloUsdcBal = await usdc.balanceOf(USDC_SILO);
+      const afterUserUsdcBal = await usdc.balanceOf(owner.address);
+
+      expect(afterUserUsdcBal.sub(beforeUserUsdcBal)).to.be.closeTo(
+        collAmount,
+        100
+      );
+      expect(beforeSiloUsdcBal.sub(afterSiloUsdcBal)).to.be.closeTo(
+        collAmount,
+        100
+      );
+    });
+    it('should calculate silo shares correctly to count uTokens', async () => {
+      await usdc.connect(usdcWhale).transfer(owner.address, collAmount);
+      await usdc.approve(vault.address, collAmount);
+      await vault.addCollateral(collAmount);
+
+      const creditLimit = await vault.getCreditLimit(owner.address);
+      expect(creditLimit).to.be.closeTo(
+        collAmount.mul(700).div(denominator),
+        parseEther('1')
+      );
+    });
+  });
+
+  describe.only('Mock Silo Strategy', () => {
+    const collAmount = parseEther('700');
+    const borrowAmount = parseEther('100');
+    const SETTER_ROLE =
+      '0x61c92169ef077349011ff0b1383c894d86c5f0b41d986366b58a6cf31e93beda';
+
+    const USDC = '0x6B175474E89094C44Da98b954EedeAC495271d0F';
+    // const USDC_SILO = '0x71D11118F64536a1722e86E3D0815556169cecA8';
+    const USDC_WHALE = '0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503';
+
+    let usdc: IERC20;
+    let usdcWhale: SignerWithAddress;
+    let strategy: SiloStrategy;
+    let mockSilo: MockSilo;
+
+    before(async () => {
+      usdcWhale = await unlockAccount(USDC_WHALE);
+    });
+
+    beforeEach(async () => {
+      usdc = await ethers.getContractAt('IERC20', USDC);
+
+      const MockSiloFactory = await ethers.getContractFactory('MockSilo');
+      mockSilo = <MockSilo>await MockSiloFactory.deploy();
+      await mockSilo.setAssetStorage(USDC);
+
+      const strategyFactory = await ethers.getContractFactory('SiloStrategy');
+      strategy = <SiloStrategy>(
+        await upgrades.deployProxy(strategyFactory, [USDC, mockSilo.address])
+      );
+
+      const factory = await ethers.getContractFactory('ERC20Vault');
+      vault = <ERC20Vault>await upgrades.deployProxy(factory, [
+        stablecoin.address,
+        USDC,
+        strategy.address,
+        provider.address,
+        {
+          debtInterestApr: {
+            numerator,
+            denominator,
+          },
+          organizationFeeRate: {
+            numerator,
+            denominator,
+          },
+          borrowAmountCap,
+          minBorrowAmount,
+        },
+      ]);
+
+      await strategy.setVault(vault.address);
+
+      await stablecoin.grantRole(await stablecoin.MINTER_ROLE(), vault.address);
+    });
+    it('strategy should deposit collaterals to given silo', async () => {
+      await usdc.connect(usdcWhale).transfer(owner.address, collAmount);
+      await usdc.approve(vault.address, collAmount);
+
+      const beforeSiloUsdcBal = await usdc.balanceOf(mockSilo.address);
+      await vault.addCollateral(collAmount);
+      const afterSiloUsdcBal = await usdc.balanceOf(mockSilo.address);
+
+      expect(afterSiloUsdcBal).to.be.equal(beforeSiloUsdcBal.add(collAmount));
+      const userInfo = await strategy.userInfos(owner.address);
+
+      const uColl = await strategy.toAmount(userInfo);
+      expect(uColl).to.be.closeTo(collAmount, 100);
+    });
+
+    it('strategy should withdraw collaterals from given silo', async () => {
+      await usdc.connect(usdcWhale).transfer(owner.address, collAmount);
+      await usdc.approve(vault.address, collAmount);
+      await vault.addCollateral(collAmount);
+
+      const position = await vault.positions(owner.address);
+
+      const beforeUserUsdcBal = await usdc.balanceOf(owner.address);
+      const beforeSiloUsdcBal = await usdc.balanceOf(mockSilo.address);
+      await vault.removeCollateral(position.collateral);
+      const afterSiloUsdcBal = await usdc.balanceOf(mockSilo.address);
       const afterUserUsdcBal = await usdc.balanceOf(owner.address);
 
       expect(afterUserUsdcBal.sub(beforeUserUsdcBal)).to.be.closeTo(

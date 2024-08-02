@@ -42,34 +42,34 @@ contract ERC20VaultETH is ERC20Vault {
     /// @dev Returns the credit limit
     /// @param _owner The position owner
     /// @param _colAmount The collateral amount
-    /// @return The credit limit
+    /// @return creditLimitETH The credit limit
     function _getCreditLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view override returns (uint256) {
+    ) internal view override returns (uint256 creditLimitETH) {
         uint _uAmount = _colAmount;
         if (address(strategy) != address(0)) {
             _uAmount = strategy.toAmount(_colAmount);
         }
-        uint256 creditLimitETH = ERC20ValueProviderETH(valueProvider)
-            .getCreditLimitETH(_owner, _uAmount);
-        return creditLimitETH;
+        creditLimitETH = ERC20ValueProviderETH(valueProvider).getCreditLimitETH(
+                _owner,
+                _uAmount
+            );
     }
 
     /// @dev Returns the minimum amount of debt necessary to liquidate the position
     /// @param _owner The position owner
     /// @param _colAmount The collateral amount
-    /// @return The minimum amount of debt to liquidate the position
+    /// @return liquidationLimitETH The minimum amount of debt to liquidate the position
     function _getLiquidationLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view override returns (uint256) {
+    ) internal view override returns (uint256 liquidationLimitETH) {
         uint _uAmount = _colAmount;
         if (address(strategy) != address(0)) {
             _uAmount = strategy.toAmount(_colAmount);
         }
-        uint256 liquidationLimitETH = ERC20ValueProviderETH(valueProvider)
+        liquidationLimitETH = ERC20ValueProviderETH(valueProvider)
             .getLiquidationLimitETH(_owner, _uAmount);
-        return liquidationLimitETH;
     }
 }

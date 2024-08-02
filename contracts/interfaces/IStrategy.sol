@@ -21,4 +21,10 @@ interface IStrategy {
     function getUnderlyingAmount(address _account) external view returns (uint);
 
     function toAmount(uint share) external view returns (uint);
+
+    function pendingRewards(
+        address _account
+    ) external view returns (address[] memory, uint256[] memory);
+
+    function claimRewards(address _account) external;
 }
