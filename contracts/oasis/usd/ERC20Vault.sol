@@ -7,6 +7,7 @@ import '@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeab
 import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol';
 
 import '../../interfaces/IStableCoin.sol';
+import '../../interfaces/IStrategy.sol';
 import '../../utils/RateLib.sol';
 import {ERC20ValueProvider} from './ERC20ValueProvider.sol';
 import {AbstractAssetVault} from './AbstractAssetVault.sol';
@@ -24,6 +25,8 @@ contract ERC20Vault is AbstractAssetVault {
 
     IERC20Upgradeable public tokenContract;
 
+    IStrategy public strategy;
+
     /// @notice This function is only called once during deployment of the proxy contract. It's not called after upgrades.
     /// @param _stablecoin TriUSD address
     /// @param _tokenContract The collateral token address
@@ -32,12 +35,14 @@ contract ERC20Vault is AbstractAssetVault {
     function initialize(
         IStableCoin _stablecoin,
         IERC20Upgradeable _tokenContract,
+        IStrategy _strategy,
         address _valueProvider,
         VaultSettings calldata _settings
     ) external virtual initializer {
         __initialize(_stablecoin, _settings);
         tokenContract = _tokenContract;
         valueProvider = _valueProvider;
+        strategy = _strategy;
     }
 
     function setValueProvider(
@@ -54,13 +59,18 @@ contract ERC20Vault is AbstractAssetVault {
         if (_colAmount == 0) revert InvalidAmount(_colAmount);
 
         tokenContract.safeTransferFrom(_account, address(this), _colAmount);
+        uint share = _colAmount;
+        if (address(strategy) != address(0)) {
+            tokenContract.safeApprove(address(strategy), _colAmount);
+            share = strategy.deposit(_account, _colAmount);
+        }
 
         Position storage position = positions[_account];
 
         if (!userIndexes.contains(_account)) {
             userIndexes.add(_account);
         }
-        position.collateral += _colAmount;
+        position.collateral += share;
 
         emit CollateralAdded(_account, _colAmount);
     }
@@ -68,28 +78,32 @@ contract ERC20Vault is AbstractAssetVault {
     /// @dev See {removeCollateral}
     function _removeCollateral(
         address _account,
-        uint256 _colAmount
+        uint256 _colShare
     ) internal override {
         Position storage position = positions[_account];
 
         uint256 _debtAmount = _getDebtAmount(_account);
         uint256 _creditLimit = _getCreditLimit(
             _account,
-            position.collateral - _colAmount
+            position.collateral - _colShare
         );
 
         if (_debtAmount > _creditLimit) revert InsufficientCollateral();
 
-        position.collateral -= _colAmount;
+        uint withdrawn = _colShare;
+        if (address(strategy) != address(0)) {
+            withdrawn = strategy.withdraw(_account, _colShare);
+        }
+        position.collateral -= _colShare;
 
         if (position.collateral == 0) {
             delete positions[_account];
             userIndexes.remove(_account);
         }
 
-        tokenContract.safeTransfer(_account, _colAmount);
+        tokenContract.safeTransfer(_account, withdrawn);
 
-        emit CollateralRemoved(_account, _colAmount);
+        emit CollateralRemoved(_account, withdrawn);
     }
 
     /// @dev See {liquidate}
@@ -126,26 +140,34 @@ contract ERC20Vault is AbstractAssetVault {
     /// @dev Returns the credit limit
     /// @param _owner The position owner
     /// @param _colAmount The collateral amount
-    /// @return The credit limit
+    /// @return creditLimitUSD The credit limit
     function _getCreditLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view virtual override returns (uint256) {
-        uint256 creditLimitUSD = ERC20ValueProvider(valueProvider)
-            .getCreditLimitUSD(_owner, _colAmount);
-        return creditLimitUSD;
+    ) internal view virtual override returns (uint256 creditLimitUSD) {
+        uint _uAmount = _colAmount;
+        if (address(strategy) != address(0)) {
+            _uAmount = strategy.toAmount(_colAmount);
+        }
+        creditLimitUSD = ERC20ValueProvider(valueProvider).getCreditLimitUSD(
+            _owner,
+            _uAmount
+        );
     }
 
     /// @dev Returns the minimum amount of debt necessary to liquidate the position
     /// @param _owner The position owner
     /// @param _colAmount The collateral amount
-    /// @return The minimum amount of debt to liquidate the position
+    /// @return liquidationLimitUSD The minimum amount of debt to liquidate the position
     function _getLiquidationLimit(
         address _owner,
         uint256 _colAmount
-    ) internal view virtual override returns (uint256) {
-        uint256 liquidationLimitUSD = ERC20ValueProvider(valueProvider)
-            .getLiquidationLimitUSD(_owner, _colAmount);
-        return liquidationLimitUSD;
+    ) internal view virtual override returns (uint256 liquidationLimitUSD) {
+        uint _uAmount = _colAmount;
+        if (address(strategy) != address(0)) {
+            _uAmount = strategy.toAmount(_colAmount);
+        }
+        liquidationLimitUSD = ERC20ValueProvider(valueProvider)
+            .getLiquidationLimitUSD(_owner, _uAmount);
     }
 }
