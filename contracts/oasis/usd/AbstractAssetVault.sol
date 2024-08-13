@@ -60,6 +60,7 @@ abstract contract AbstractAssetVault is
     bytes32 internal constant DAO_ROLE = keccak256('DAO_ROLE');
     bytes32 internal constant LIQUIDATOR_ROLE = keccak256('LIQUIDATOR_ROLE');
     bytes32 internal constant SETTER_ROLE = keccak256('SETTER_ROLE');
+    bytes32 internal constant LEVERAGE_ROLE = keccak256('LEVERAGE_ROLE');
 
     //accrue required
     uint8 internal constant ACTION_ADD_COLLATERAL = 0;
@@ -215,7 +216,18 @@ abstract contract AbstractAssetVault is
     /// @param _colAmount The collateral amount
     function addCollateral(uint256 _colAmount) external nonReentrant {
         accrue();
-        _addCollateral(msg.sender, _colAmount);
+        _addCollateral(msg.sender, msg.sender, _colAmount);
+    }
+
+    /// @notice Allows a user to add collateral on behalf of user
+    /// @param _colAmount The collateral amount
+    /// @param _onBehalfOf The onBeHalfOf user
+    function addCollateralFor(
+        uint _colAmount,
+        address _onBehalfOf
+    ) external nonReentrant onlyRole(LEVERAGE_ROLE) {
+        accrue();
+        _addCollateral(msg.sender, _onBehalfOf, _colAmount);
     }
 
     /// @notice Allows users to borrow TriUSD
@@ -223,7 +235,18 @@ abstract contract AbstractAssetVault is
     /// @param _amount The amount of TriUSD to be borrowed. Note that the user will receive less than the amount requested,
     function borrow(uint256 _amount) external nonReentrant {
         accrue();
-        _borrow(msg.sender, _amount);
+        _borrow(msg.sender, msg.sender, _amount);
+    }
+
+    /// @notice Allows users to borrow TriUSD
+    /// @dev emits a {Borrowed} event
+    /// @param _amount The amount of TriUSD to be borrowed. Note that the user will receive less than the amount requested,
+    function borrowFor(
+        uint256 _amount,
+        address _onBehalfOf
+    ) external nonReentrant {
+        accrue();
+        _borrow(msg.sender, _onBehalfOf, _amount);
     }
 
     /// @notice Allows users to repay a portion/all of their debt. Note that since interest increases every second,
@@ -316,10 +339,10 @@ abstract contract AbstractAssetVault is
 
             if (action == ACTION_ADD_COLLATERAL) {
                 uint256 colAmount = abi.decode(_data[i], (uint256));
-                _addCollateral(_account, colAmount);
+                _addCollateral(_account, _account, colAmount);
             } else if (action == ACTION_BORROW) {
                 uint256 amount = abi.decode(_data[i], (uint256));
-                _borrow(_account, amount);
+                _borrow(_account, _account, amount);
             } else if (action == ACTION_REPAY) {
                 uint256 amount = abi.decode(_data[i], (uint256));
                 _repay(_account, amount);
@@ -341,11 +364,16 @@ abstract contract AbstractAssetVault is
     /// @dev See {addCollateral}
     function _addCollateral(
         address _account,
+        address _onBehalfOf,
         uint256 _colAmount
     ) internal virtual {}
 
     /// @dev See {borrow}
-    function _borrow(address _account, uint256 _amount) internal {
+    function _borrow(
+        address _account,
+        address _onBehalfOf,
+        uint256 _amount
+    ) internal {
         if (_amount < settings.minBorrowAmount) {
             revert MinBorrowAmount();
         }
@@ -354,9 +382,12 @@ abstract contract AbstractAssetVault is
         if (_totalDebtAmount + _amount > settings.borrowAmountCap)
             revert DebtCapReached();
 
-        Position storage position = positions[_account];
-        uint256 _creditLimit = _getCreditLimit(_account, position.collateral);
-        uint256 _debtAmount = _getDebtAmount(_account);
+        Position storage position = positions[_onBehalfOf];
+        uint256 _creditLimit = _getCreditLimit(
+            _onBehalfOf,
+            position.collateral
+        );
+        uint256 _debtAmount = _getDebtAmount(_onBehalfOf);
         if (_debtAmount + _amount > _creditLimit) revert InvalidAmount(_amount);
 
         //calculate the borrow fee
@@ -385,7 +416,7 @@ abstract contract AbstractAssetVault is
         //subtract the fee from the amount borrowed
         stablecoin.mint(_account, _amount - _feeAmount);
 
-        emit Borrowed(_account, _amount);
+        emit Borrowed(_onBehalfOf, _amount);
     }
 
     /// @dev See {repay}

@@ -54,6 +54,7 @@ contract ERC20Vault is AbstractAssetVault {
     /// @dev See {addCollateral}
     function _addCollateral(
         address _account,
+        address _onBehalfOf,
         uint256 _colAmount
     ) internal override {
         if (_colAmount == 0) revert InvalidAmount(_colAmount);
@@ -62,17 +63,17 @@ contract ERC20Vault is AbstractAssetVault {
         uint share = _colAmount;
         if (address(strategy) != address(0)) {
             tokenContract.safeApprove(address(strategy), _colAmount);
-            share = strategy.deposit(_account, _colAmount);
+            share = strategy.deposit(_onBehalfOf, _colAmount);
         }
 
-        Position storage position = positions[_account];
+        Position storage position = positions[_onBehalfOf];
 
-        if (!userIndexes.contains(_account)) {
-            userIndexes.add(_account);
+        if (!userIndexes.contains(_onBehalfOf)) {
+            userIndexes.add(_onBehalfOf);
         }
         position.collateral += share;
 
-        emit CollateralAdded(_account, _colAmount);
+        emit CollateralAdded(_onBehalfOf, _colAmount);
     }
 
     /// @dev See {removeCollateral}
