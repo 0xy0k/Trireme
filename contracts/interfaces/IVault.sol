@@ -11,4 +11,8 @@ interface IVault {
     function borrowFor(uint256 _amount, address _onBehalfOf) external;
 
     function tokenContract() external view returns (address);
+
+    function stablecoin() external view returns (address);
+
+    function valueProvider() external view returns (address);
 }
