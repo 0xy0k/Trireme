@@ -3,16 +3,18 @@ import '@nomiclabs/hardhat-ethers';
 import '@nomiclabs/hardhat-waffle';
 import '@nomicfoundation/hardhat-verify';
 import '@nomiclabs/hardhat-truffle5';
+import '@openzeppelin/hardhat-upgrades';
 import 'hardhat-contract-sizer';
 import 'solidity-coverage';
 import 'hardhat-deploy';
+import { HardhatUserConfig } from 'hardhat/config';
 
 require('dotenv').config();
 
 const mainnetURL = process.env.MAIN_NET_API_URL;
 const sepoliaURL = process.env.SEPOLIA_NET_API_URL;
 
-export default {
+const config: HardhatUserConfig = {
   solidity: {
     compilers: [
       {
@@ -23,7 +25,6 @@ export default {
             runs: 200,
           },
         },
-        docker: true,
       },
     ],
   },
@@ -44,10 +45,9 @@ export default {
   networks: {
     hardhat: {
       forking: {
-        url: process.env.MAIN_NET_API_URL,
+        url: process.env.MAIN_NET_API_URL!,
+        blockNumber: 20584059,
       },
-      hardfork: 'london',
-      gasPrice: 'auto',
     },
     mainnet: {
       url: mainnetURL,
@@ -70,3 +70,5 @@ export default {
     enabled: true,
   },
 };
+
+export default config;

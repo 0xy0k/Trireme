@@ -23,4 +23,6 @@ interface IValueProvider {
         address _owner,
         uint256 _colAmount
     ) external view returns (uint256);
+
+    function getPriceUSD(uint256 colAmount) external view returns (uint256);
 }

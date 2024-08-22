@@ -57,6 +57,7 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
     /// @dev See {addCollateral}
     function _addCollateral(
         address _account,
+        address _onBehalfOf,
         uint256 _colAmount
     ) internal override {
         if (_colAmount == 0) revert InvalidAmount(_colAmount);
@@ -69,14 +70,14 @@ contract ERC1155Vault is AbstractAssetVault, IERC1155ReceiverUpgradeable {
             '0x'
         );
 
-        Position storage position = positions[_account];
+        Position storage position = positions[_onBehalfOf];
 
-        if (!userIndexes.contains(_account)) {
-            userIndexes.add(_account);
+        if (!userIndexes.contains(_onBehalfOf)) {
+            userIndexes.add(_onBehalfOf);
         }
         position.collateral += _colAmount;
 
-        emit CollateralAdded(_account, _colAmount);
+        emit CollateralAdded(_onBehalfOf, _colAmount);
     }
 
     /// @dev See {removeCollateral}
