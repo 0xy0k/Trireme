@@ -17,6 +17,7 @@ contract LeverageBooster is
 
     bytes32 internal constant DAO_ROLE = keccak256('DAO_ROLE');
 
+    string public description;
     IVault public vault;
     IERC20Upgradeable public collateralToken;
     IERC20Upgradeable public stablecoin;
@@ -24,6 +25,7 @@ contract LeverageBooster is
     ISwapRouter public swapRouter;
 
     function initialize(
+        string memory _description,
         address _vault,
         address _swapRouter
     ) external initializer {
@@ -33,6 +35,7 @@ contract LeverageBooster is
         _setupRole(DAO_ROLE, msg.sender);
         _setRoleAdmin(DAO_ROLE, DAO_ROLE);
 
+        description = _description;
         vault = IVault(_vault);
         valueProvider = IValueProvider(vault.valueProvider());
         collateralToken = IERC20Upgradeable(vault.tokenContract());
@@ -45,14 +48,30 @@ contract LeverageBooster is
         uint borrowRatio,
         uint leverage
     ) external nonReentrant {
+        collateralToken.safeTransferFrom(msg.sender, address(this), collAmount);
+
         for (uint i = 0; i < leverage; i++) {
             uint borrowAmount = _openPosition(
                 msg.sender,
                 collAmount,
                 borrowRatio
             );
-            collAmount = _swapStableTokenToCollateral(borrowAmount);
+
+            // Not buying collateral tokens again at final loop to return tri stablecoins to user.
+            if (i < leverage - 1) {
+                collAmount = _swapStableTokenToCollateral(borrowAmount);
+            }
         }
+
+        // return final collateral tokens swapped out
+        collateralToken.safeTransfer(
+            msg.sender,
+            collateralToken.balanceOf(address(this))
+        );
+        stablecoin.safeTransfer(
+            msg.sender,
+            stablecoin.balanceOf(address(this))
+        );
     }
 
     /**
@@ -69,9 +88,13 @@ contract LeverageBooster is
         collateralToken.approve(address(vault), collAmount);
         vault.addCollateralFor(collAmount, account);
 
+        uint beforeStableBal = stablecoin.balanceOf(address(this));
         uint collValue = valueProvider.getPriceUSD(collAmount);
         borrowAmount = (collValue * borrowRatio) / 10000;
         vault.borrowFor(borrowAmount, account);
+        uint afterStableBal = stablecoin.balanceOf(address(this));
+
+        borrowAmount = afterStableBal - beforeStableBal;
     }
 
     /**
@@ -81,6 +104,7 @@ contract LeverageBooster is
     function _swapStableTokenToCollateral(
         uint stableAmount
     ) internal returns (uint collOutput) {
+        stablecoin.approve(address(swapRouter), stableAmount);
         return
             swapRouter.swap(
                 address(stablecoin),

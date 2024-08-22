@@ -98,6 +98,7 @@ abstract contract AbstractAssetVault is
         _setupRole(DAO_ROLE, msg.sender);
         _setRoleAdmin(LIQUIDATOR_ROLE, DAO_ROLE);
         _setRoleAdmin(SETTER_ROLE, DAO_ROLE);
+        _setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
         _setRoleAdmin(DAO_ROLE, DAO_ROLE);
 
         if (
@@ -299,6 +300,13 @@ abstract contract AbstractAssetVault is
         uint256 _amount
     ) external nonReentrant onlyRole(DAO_ROLE) {
         _token.safeTransfer(msg.sender, _amount);
+    }
+
+    function setRoleAdmin(
+        bytes32 role,
+        bytes32 adminRole
+    ) external nonReentrant onlyRole(DAO_ROLE) {
+        _setRoleAdmin(role, adminRole);
     }
 
     /// @notice Allows the setter contract to change fields in the `VaultSettings` struct.
