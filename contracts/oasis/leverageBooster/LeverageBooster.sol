@@ -16,6 +16,7 @@ contract LeverageBooster is
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     bytes32 internal constant DAO_ROLE = keccak256('DAO_ROLE');
+    bytes32 internal constant ROUTE_ROLE = keccak256('ROUTE_ROLE');
 
     string public description;
     IVault public vault;
@@ -23,6 +24,12 @@ contract LeverageBooster is
     IERC20Upgradeable public stablecoin;
     IValueProvider public valueProvider;
     ISwapRouter public swapRouter;
+
+    ISwapRouter.SwapRoute public triRoute;
+    mapping(address => ISwapRouter.SwapRoute) public collRoutes;
+
+    error No_Routes(address from, address to);
+    error Invalid_Route();
 
     function initialize(
         string memory _description,
@@ -34,6 +41,7 @@ contract LeverageBooster is
 
         _setupRole(DAO_ROLE, msg.sender);
         _setRoleAdmin(DAO_ROLE, DAO_ROLE);
+        _setRoleAdmin(ROUTE_ROLE, DAO_ROLE);
 
         description = _description;
         vault = IVault(_vault);
@@ -41,6 +49,48 @@ contract LeverageBooster is
         collateralToken = IERC20Upgradeable(vault.tokenContract());
         stablecoin = IERC20Upgradeable(vault.stablecoin());
         swapRouter = ISwapRouter(_swapRouter);
+    }
+
+    function setTriRoute(
+        address from,
+        address to,
+        address pool,
+        ISwapRouter.Dex dex
+    ) external onlyRole(ROUTE_ROLE) {
+        if (
+            from == address(0) ||
+            to == address(0) ||
+            pool == address(0) ||
+            dex == ISwapRouter.Dex.NONE
+        ) revert Invalid_Route();
+
+        triRoute = ISwapRouter.SwapRoute({
+            fromToken: from,
+            toToken: to,
+            pool: pool,
+            dex: dex
+        });
+    }
+
+    function setRoute(
+        address from,
+        address to,
+        address pool,
+        ISwapRouter.Dex dex
+    ) external onlyRole(ROUTE_ROLE) {
+        if (
+            from == address(0) ||
+            to == address(0) ||
+            pool == address(0) ||
+            dex == ISwapRouter.Dex.NONE
+        ) revert Invalid_Route();
+
+        collRoutes[from] = ISwapRouter.SwapRoute({
+            fromToken: from,
+            toToken: to,
+            pool: pool,
+            dex: dex
+        });
     }
 
     function leveragePosition(
@@ -104,12 +154,35 @@ contract LeverageBooster is
     function _swapStableTokenToCollateral(
         uint stableAmount
     ) internal returns (uint collOutput) {
+        // Convert tri stablecoins to paired stablecoins on Curve first.
         stablecoin.approve(address(swapRouter), stableAmount);
-        return
-            swapRouter.swap(
-                address(stablecoin),
-                address(collateralToken),
-                stableAmount
+        uint stableOutput = swapRouter.swap(triRoute, stableAmount);
+
+        if (triRoute.toToken == address(collateralToken)) {
+            return stableOutput;
+        }
+
+        address targetToken = address(collateralToken);
+        address fromToken = triRoute.toToken;
+        uint fromAmount = stableOutput;
+
+        while (true) {
+            ISwapRouter.SwapRoute memory route = collRoutes[fromToken];
+            if (route.dex == ISwapRouter.Dex.NONE)
+                revert No_Routes(fromToken, targetToken);
+
+            IERC20Upgradeable(fromToken).approve(
+                address(swapRouter),
+                fromAmount
             );
+            collOutput = swapRouter.swap(route, fromAmount);
+
+            if (route.toToken == targetToken) {
+                break;
+            } else {
+                fromToken = route.toToken;
+                fromAmount = collOutput;
+            }
+        }
     }
 }

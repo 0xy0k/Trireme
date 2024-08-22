@@ -12,25 +12,14 @@ import 'contracts/interfaces/curve/ICurveStableSwapNG.sol';
 contract SwapRouter is ISwapRouter, AccessControlUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
-    struct SwapRoute {
-        address fromToken;
-        address toToken;
-        address pool;
-        Dex dex;
-    }
-
     bytes32 internal constant DAO_ROLE = keccak256('DAO_ROLE');
-    bytes32 internal constant ROUTE_ROLE = keccak256('ROUTE_ROLE');
 
     IUniswapV2Router02 public constant uniV2Router =
         IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
     IUniswapV3Router public constant uniV3Router =
         IUniswapV3Router(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
-    mapping(address => SwapRoute) public triRoutes;
-    mapping(address => mapping(address => SwapRoute)) public routes;
-
-    error No_Routes();
+    error No_Routes(address from, address to);
     error Invalid_Route();
 
     function initialize() external initializer {
@@ -38,91 +27,36 @@ contract SwapRouter is ISwapRouter, AccessControlUpgradeable {
 
         _setupRole(DAO_ROLE, msg.sender);
         _setRoleAdmin(DAO_ROLE, DAO_ROLE);
-        _setRoleAdmin(ROUTE_ROLE, DAO_ROLE);
-    }
-
-    function setRoute(
-        address from,
-        address to,
-        address pool,
-        Dex dex
-    ) external onlyRole(ROUTE_ROLE) {
-        if (
-            from == address(0) ||
-            to == address(0) ||
-            pool == address(0) ||
-            dex == Dex.NONE
-        ) revert Invalid_Route();
-
-        routes[from][to] = SwapRoute({
-            fromToken: from,
-            toToken: to,
-            pool: pool,
-            dex: dex
-        });
-    }
-
-    function setTriRoute(
-        address from,
-        address to,
-        address pool,
-        Dex dex
-    ) external onlyRole(ROUTE_ROLE) {
-        if (
-            from == address(0) ||
-            to == address(0) ||
-            pool == address(0) ||
-            dex == Dex.NONE
-        ) revert Invalid_Route();
-
-        triRoutes[from] = SwapRoute({
-            fromToken: from,
-            toToken: to,
-            pool: pool,
-            dex: dex
-        });
     }
 
     function swap(
-        address fromToken,
-        address toToken,
+        SwapRoute memory route,
         uint fromAmount
     ) external returns (uint toOutput) {
-        SwapRoute memory triRoute = triRoutes[fromToken];
-        if (triRoute.dex != Dex.CURVE) revert No_Routes();
-
-        IERC20Upgradeable(fromToken).safeTransferFrom(
+        IERC20Upgradeable(route.fromToken).safeTransferFrom(
             msg.sender,
             address(this),
             fromAmount
         );
 
-        // Swap tri-stablecoin to stablecoins on curve (triUSD -> USDC, triETH -> WETH)
-        uint stableOutput = _swapStableOnCurve(
-            triRoute.pool,
-            fromToken,
-            fromAmount
-        );
-
-        // Swap stablecoins to toToken on uniswap
-        if (triRoute.toToken == toToken) {
-            // No need to swap again
-            return stableOutput;
+        if (route.dex == Dex.CURVE) {
+            toOutput = _swapStableOnCurve(
+                route.pool,
+                route.fromToken,
+                fromAmount
+            );
+        } else if (route.dex == Dex.UNISWAP_V2) {
+            toOutput = _swapStableOnUniswapV2(
+                route.pool,
+                route.fromToken,
+                route.toToken,
+                fromAmount
+            );
         } else {
-            SwapRoute storage collRoute = routes[triRoute.toToken][toToken];
-            if (collRoute.dex == Dex.UNISWAP_V2) {
-                toOutput = _swapStableOnUniswapV2(
-                    collRoute.pool,
-                    triRoute.toToken,
-                    toToken,
-                    stableOutput
-                );
-            } else {
-                revert No_Routes();
-            }
+            revert No_Routes(route.fromToken, route.toToken);
         }
 
-        IERC20Upgradeable(toToken).safeTransfer(msg.sender, toOutput);
+        IERC20Upgradeable(route.toToken).safeTransfer(msg.sender, toOutput);
     }
 
     /**

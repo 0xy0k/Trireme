@@ -9,9 +9,15 @@ interface ISwapRouter {
         UNISWAP_V3
     }
 
+    struct SwapRoute {
+        address fromToken;
+        address toToken;
+        address pool;
+        Dex dex;
+    }
+
     function swap(
-        address fromToken,
-        address toToken,
+        SwapRoute memory route,
         uint fromAmount
     ) external returns (uint toOutput);
 }
