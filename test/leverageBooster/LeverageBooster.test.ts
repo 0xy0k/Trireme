@@ -2,9 +2,13 @@ import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signers';
 import { ethers, upgrades } from 'hardhat';
 import {
   ERC20Vault,
+  ERC20VaultETH,
   IERC20,
   LeverageBooster,
+  LeverageBoosterETH,
   MockERC20ValueProvider,
+  MockERC20ValueProviderETH,
+  TriremeETH,
   TriremeUSD,
   SwapRouter,
 } from '../../types';
@@ -18,10 +22,14 @@ describe('Leverage Booster', () => {
   let daoAdmin: SignerWithAddress;
 
   let triUSDC: TriremeUSD;
+  let triETH: TriremeETH;
   let leverageBooster: LeverageBooster;
+  let leverageBoosterETH: LeverageBoosterETH;
   let swapRouter: SwapRouter;
   let provider: MockERC20ValueProvider;
+  let providerETH: MockERC20ValueProviderETH;
   let vault: ERC20Vault;
+  let vaultETH: ERC20VaultETH;
   let weth: IERC20;
   let weEth: IERC20;
   let usdc: IERC20;
@@ -30,6 +38,7 @@ describe('Leverage Booster', () => {
   const WETH = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2';
   const WeETH = '0xCd5fE23C85820F7B72D0926FC9b05b43E359b7ee';
   const TriUSD_USDC_Curve = '0x66267c6E24fBcdeBf06AE9104e0ccFb9C8b2AE08';
+  const TriETH_WETH_Curve = '0x637213593e31Bc25F49D37C74B43a89eb1743D73';
   const USDC_WETH_UNI_V2 = '0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc';
   const WETH_WeETH_CURVE = '0xDB74dfDD3BB46bE8Ce6C33dC9D82777BCFc3dEd5';
   const chainlinkUSDTAggregator = '0x3E7d1eAB13ad0104d2750B8863b489D65364e32D';
@@ -77,6 +86,12 @@ describe('Leverage Booster', () => {
       await ethers.getContractAt(
         'TriremeUSD',
         '0xd60eea80c83779a8a5bfcdac1f3323548e6bb62d'
+      )
+    );
+    triETH = <TriremeETH>(
+      await ethers.getContractAt(
+        'TriremeETH',
+        '0x63a0964a36c34e81959da5894ad888800e17405b'
       )
     );
   });
@@ -265,6 +280,100 @@ describe('Leverage Booster', () => {
 
     console.log('Final Position Information of Leverage Booster---');
     const levPosition = await vault.positions(leverageBooster.address);
+    console.log(levPosition.collateral.toString());
+    console.log(levPosition.debtPortion.toString());
+    console.log(levPosition.debtPrincipal.toString());
+  });
+
+  it.only('should be able to leverage position on triETH-weETH vault', async () => {
+    const providerFactory = await ethers.getContractFactory(
+      'MockERC20ValueProviderETH'
+    );
+    providerETH = <MockERC20ValueProviderETH>await upgrades.deployProxy(
+      providerFactory,
+      [
+        chainlinkUSDTAggregator,
+        WeETH,
+        {
+          numerator: BigNumber.from(700),
+          denominator,
+        },
+        {
+          numerator: BigNumber.from(900),
+          denominator,
+        },
+      ]
+    );
+    const vaultFactory = await ethers.getContractFactory('ERC20VaultETH');
+    vaultETH = <ERC20VaultETH>await upgrades.deployProxy(vaultFactory, [
+      triETH.address,
+      WeETH,
+      constants.AddressZero,
+      providerETH.address,
+      {
+        debtInterestApr: {
+          numerator,
+          denominator,
+        },
+        organizationFeeRate: {
+          numerator,
+          denominator,
+        },
+        borrowAmountCap,
+        minBorrowAmount,
+      },
+    ]);
+    await triETH.connect(daoAdmin).grantRole(MINTER_ROLE, vaultETH.address);
+
+    const swapRouterFactory = await ethers.getContractFactory('SwapRouter');
+    swapRouter = <SwapRouter>await upgrades.deployProxy(swapRouterFactory);
+
+    const leverageBoosterFactory = await ethers.getContractFactory(
+      'LeverageBoosterETH'
+    );
+    leverageBoosterETH = <LeverageBoosterETH>(
+      await upgrades.deployProxy(leverageBoosterFactory, [
+        'TriETH-WeETH Leverage Booster',
+        vaultETH.address,
+        swapRouter.address,
+      ])
+    );
+    await leverageBoosterETH.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBoosterETH.setTriRoute(
+      triETH.address,
+      WETH,
+      TriETH_WETH_Curve,
+      1 // Dex.CURVE
+    );
+    await leverageBoosterETH.setRoute(WETH, WeETH, WETH_WeETH_CURVE, 1);
+
+    await vaultETH.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
+    await vaultETH.grantRole(LEVERAGE_ROLE, leverageBoosterETH.address);
+
+    console.log('Starting with 10 WeETH');
+    await weEth.approve(leverageBoosterETH.address, initialCollateral);
+    await leverageBoosterETH.leveragePosition(initialCollateral, 5000, 3);
+
+    console.log('Final Position Information---');
+    const position = await vaultETH.positions(owner.address);
+    console.log(position.collateral.toString());
+    console.log(position.debtPortion.toString());
+    console.log(position.debtPrincipal.toString());
+
+    console.log('Leverage Booster Balance---');
+    const boosterCollBal = await weEth.balanceOf(leverageBoosterETH.address);
+    const boosterUSDCBal = await weth.balanceOf(leverageBoosterETH.address);
+    const boosterTriBal = await triETH.balanceOf(leverageBoosterETH.address);
+
+    console.log(boosterCollBal.toString());
+    console.log(boosterUSDCBal.toString());
+    console.log(boosterTriBal.toString());
+
+    const triUsdBal = await triETH.balanceOf(owner.address);
+    console.log('Final User TriUSD Bal:', formatEther(triUsdBal));
+
+    console.log('Final Position Information of Leverage Booster---');
+    const levPosition = await vaultETH.positions(leverageBoosterETH.address);
     console.log(levPosition.collateral.toString());
     console.log(levPosition.debtPortion.toString());
     console.log(levPosition.debtPrincipal.toString());
