@@ -3,7 +3,7 @@ pragma solidity 0.8.17;
 
 import '../utils/RateLib.sol';
 
-interface IValueProviderETH {
+interface IValueProviderBTC {
     function getCreditLimitRate(
         address _owner,
         uint256 _colAmount
@@ -14,15 +14,15 @@ interface IValueProviderETH {
         uint256 _colAmount
     ) external view returns (RateLib.Rate memory);
 
-    function getCreditLimitETH(
+    function getCreditLimitBTC(
         address _owner,
         uint256 _colAmount
     ) external view returns (uint256);
 
-    function getLiquidationLimitETH(
+    function getLiquidationLimitBTC(
         address _owner,
         uint256 _colAmount
     ) external view returns (uint256);
 
-    function getPriceETH(uint256 colAmount) external view returns (uint256);
+    function getPriceBTC(uint256 colAmount) external view returns (uint256);
 }

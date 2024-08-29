@@ -5,7 +5,6 @@ import {
   ERC20VaultETH,
   IERC20,
   LeverageBooster,
-  LeverageBoosterETH,
   MockERC20ValueProvider,
   MockERC20ValueProviderETH,
   TriremeETH,
@@ -21,15 +20,10 @@ describe('Leverage Booster', () => {
   let alice: SignerWithAddress;
   let daoAdmin: SignerWithAddress;
 
-  let triUSDC: TriremeUSD;
+  let triUSD: TriremeUSD;
   let triETH: TriremeETH;
   let leverageBooster: LeverageBooster;
-  let leverageBoosterETH: LeverageBoosterETH;
   let swapRouter: SwapRouter;
-  let provider: MockERC20ValueProvider;
-  let providerETH: MockERC20ValueProviderETH;
-  let vault: ERC20Vault;
-  let vaultETH: ERC20VaultETH;
   let weth: IERC20;
   let weEth: IERC20;
   let usdc: IERC20;
@@ -40,6 +34,7 @@ describe('Leverage Booster', () => {
   const TriUSD_USDC_Curve = '0x66267c6E24fBcdeBf06AE9104e0ccFb9C8b2AE08';
   const TriETH_WETH_Curve = '0x637213593e31Bc25F49D37C74B43a89eb1743D73';
   const USDC_WETH_UNI_V2 = '0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc';
+  const USDC_WETH_UNI_V3 = '0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640';
   const WETH_WeETH_CURVE = '0xDB74dfDD3BB46bE8Ce6C33dC9D82777BCFc3dEd5';
   const chainlinkUSDTAggregator = '0x3E7d1eAB13ad0104d2750B8863b489D65364e32D';
   const chainlinkWETHAggregator = '0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419';
@@ -61,7 +56,7 @@ describe('Leverage Booster', () => {
   const borrowAmountCap = parseEther('100000');
   const minBorrowAmount = parseEther('1');
 
-  const initialCollateral = parseEther('10');
+  const initialCollateral = parseEther('20');
 
   before(async () => {
     [owner, alice] = await ethers.getSigners();
@@ -82,7 +77,7 @@ describe('Leverage Booster', () => {
 
     usdc = await ethers.getContractAt('IERC20', USDC);
 
-    triUSDC = <TriremeUSD>(
+    triUSD = <TriremeUSD>(
       await ethers.getContractAt(
         'TriremeUSD',
         '0xd60eea80c83779a8a5bfcdac1f3323548e6bb62d'
@@ -100,7 +95,7 @@ describe('Leverage Booster', () => {
     const providerFactory = await ethers.getContractFactory(
       'MockERC20ValueProvider'
     );
-    provider = <MockERC20ValueProvider>await upgrades.deployProxy(
+    const provider = <MockERC20ValueProvider>await upgrades.deployProxy(
       providerFactory,
       [
         chainlinkWETHAggregator,
@@ -116,8 +111,8 @@ describe('Leverage Booster', () => {
       ]
     );
     const vaultFactory = await ethers.getContractFactory('ERC20Vault');
-    vault = <ERC20Vault>await upgrades.deployProxy(vaultFactory, [
-      triUSDC.address,
+    const vault = <ERC20Vault>await upgrades.deployProxy(vaultFactory, [
+      triUSD.address,
       WETH,
       constants.AddressZero,
       provider.address,
@@ -134,7 +129,7 @@ describe('Leverage Booster', () => {
         minBorrowAmount,
       },
     ]);
-    await triUSDC.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
+    await triUSD.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
 
     const swapRouterFactory = await ethers.getContractFactory('SwapRouter');
     swapRouter = <SwapRouter>await upgrades.deployProxy(swapRouterFactory);
@@ -144,19 +139,20 @@ describe('Leverage Booster', () => {
     );
     leverageBooster = <LeverageBooster>(
       await upgrades.deployProxy(leverageBoosterFactory, [
-        'TriUSDC-WETH Leverage Booster',
+        'triUSD-WETH Leverage Booster',
+        0,
         vault.address,
         swapRouter.address,
       ])
     );
     await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
     await leverageBooster.setTriRoute(
-      triUSDC.address,
+      triUSD.address,
       USDC,
       TriUSD_USDC_Curve,
       1 // Dex.CURVE
     );
-    await leverageBooster.setRoute(USDC, WETH, USDC_WETH_UNI_V2, 2);
+    await leverageBooster.setRoute(USDC, WETH, USDC_WETH_UNI_V2, 2, 0);
 
     await vault.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
     await vault.grantRole(LEVERAGE_ROLE, leverageBooster.address);
@@ -174,13 +170,13 @@ describe('Leverage Booster', () => {
     console.log('Leverage Booster Balance---');
     const boosterCollBal = await weth.balanceOf(leverageBooster.address);
     const boosterUSDCBal = await usdc.balanceOf(leverageBooster.address);
-    const boosterTriBal = await triUSDC.balanceOf(leverageBooster.address);
+    const boosterTriBal = await triUSD.balanceOf(leverageBooster.address);
 
     console.log(boosterCollBal.toString());
     console.log(boosterUSDCBal.toString());
     console.log(boosterTriBal.toString());
 
-    const triUsdBal = await triUSDC.balanceOf(owner.address);
+    const triUsdBal = await triUSD.balanceOf(owner.address);
     console.log('Final User TriUSD Bal:', formatEther(triUsdBal));
 
     console.log('Final Position Information of Leverage Booster---');
@@ -194,7 +190,7 @@ describe('Leverage Booster', () => {
     const providerFactory = await ethers.getContractFactory(
       'MockERC20ValueProvider'
     );
-    provider = <MockERC20ValueProvider>await upgrades.deployProxy(
+    const provider = <MockERC20ValueProvider>await upgrades.deployProxy(
       providerFactory,
       [
         chainlinkWETHAggregator,
@@ -210,8 +206,8 @@ describe('Leverage Booster', () => {
       ]
     );
     const vaultFactory = await ethers.getContractFactory('ERC20Vault');
-    vault = <ERC20Vault>await upgrades.deployProxy(vaultFactory, [
-      triUSDC.address,
+    const vault = <ERC20Vault>await upgrades.deployProxy(vaultFactory, [
+      triUSD.address,
       WeETH,
       constants.AddressZero,
       provider.address,
@@ -228,7 +224,7 @@ describe('Leverage Booster', () => {
         minBorrowAmount,
       },
     ]);
-    await triUSDC.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
+    await triUSD.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
 
     const swapRouterFactory = await ethers.getContractFactory('SwapRouter');
     swapRouter = <SwapRouter>await upgrades.deployProxy(swapRouterFactory);
@@ -238,20 +234,21 @@ describe('Leverage Booster', () => {
     );
     leverageBooster = <LeverageBooster>(
       await upgrades.deployProxy(leverageBoosterFactory, [
-        'TriUSDC-WeETH Leverage Booster',
+        'triUSD-WeETH Leverage Booster',
+        0,
         vault.address,
         swapRouter.address,
       ])
     );
     await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
     await leverageBooster.setTriRoute(
-      triUSDC.address,
+      triUSD.address,
       USDC,
       TriUSD_USDC_Curve,
       1 // Dex.CURVE
     );
-    await leverageBooster.setRoute(USDC, WETH, USDC_WETH_UNI_V2, 2);
-    await leverageBooster.setRoute(WETH, WeETH, WETH_WeETH_CURVE, 1);
+    await leverageBooster.setRoute(USDC, WETH, USDC_WETH_UNI_V2, 2, 0);
+    await leverageBooster.setRoute(WETH, WeETH, WETH_WeETH_CURVE, 1, 0);
 
     await vault.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
     await vault.grantRole(LEVERAGE_ROLE, leverageBooster.address);
@@ -269,13 +266,13 @@ describe('Leverage Booster', () => {
     console.log('Leverage Booster Balance---');
     const boosterCollBal = await weEth.balanceOf(leverageBooster.address);
     const boosterUSDCBal = await usdc.balanceOf(leverageBooster.address);
-    const boosterTriBal = await triUSDC.balanceOf(leverageBooster.address);
+    const boosterTriBal = await triUSD.balanceOf(leverageBooster.address);
 
     console.log(boosterCollBal.toString());
     console.log(boosterUSDCBal.toString());
     console.log(boosterTriBal.toString());
 
-    const triUsdBal = await triUSDC.balanceOf(owner.address);
+    const triUsdBal = await triUSD.balanceOf(owner.address);
     console.log('Final User TriUSD Bal:', formatEther(triUsdBal));
 
     console.log('Final Position Information of Leverage Booster---');
@@ -285,11 +282,11 @@ describe('Leverage Booster', () => {
     console.log(levPosition.debtPrincipal.toString());
   });
 
-  it.only('should be able to leverage position on triETH-weETH vault', async () => {
+  it('should be able to leverage position on triETH-weETH vault', async () => {
     const providerFactory = await ethers.getContractFactory(
       'MockERC20ValueProviderETH'
     );
-    providerETH = <MockERC20ValueProviderETH>await upgrades.deployProxy(
+    const provider = <MockERC20ValueProviderETH>await upgrades.deployProxy(
       providerFactory,
       [
         chainlinkUSDTAggregator,
@@ -305,11 +302,11 @@ describe('Leverage Booster', () => {
       ]
     );
     const vaultFactory = await ethers.getContractFactory('ERC20VaultETH');
-    vaultETH = <ERC20VaultETH>await upgrades.deployProxy(vaultFactory, [
+    const vault = <ERC20VaultETH>await upgrades.deployProxy(vaultFactory, [
       triETH.address,
       WeETH,
       constants.AddressZero,
-      providerETH.address,
+      provider.address,
       {
         debtInterestApr: {
           numerator,
@@ -323,47 +320,48 @@ describe('Leverage Booster', () => {
         minBorrowAmount,
       },
     ]);
-    await triETH.connect(daoAdmin).grantRole(MINTER_ROLE, vaultETH.address);
+    await triETH.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
 
     const swapRouterFactory = await ethers.getContractFactory('SwapRouter');
     swapRouter = <SwapRouter>await upgrades.deployProxy(swapRouterFactory);
 
     const leverageBoosterFactory = await ethers.getContractFactory(
-      'LeverageBoosterETH'
+      'leverageBooster'
     );
-    leverageBoosterETH = <LeverageBoosterETH>(
+    leverageBooster = <LeverageBooster>(
       await upgrades.deployProxy(leverageBoosterFactory, [
         'TriETH-WeETH Leverage Booster',
-        vaultETH.address,
+        1,
+        vault.address,
         swapRouter.address,
       ])
     );
-    await leverageBoosterETH.grantRole(ROUTER_ROLE, owner.address);
-    await leverageBoosterETH.setTriRoute(
+    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.setTriRoute(
       triETH.address,
       WETH,
       TriETH_WETH_Curve,
       1 // Dex.CURVE
     );
-    await leverageBoosterETH.setRoute(WETH, WeETH, WETH_WeETH_CURVE, 1);
+    await leverageBooster.setRoute(WETH, WeETH, WETH_WeETH_CURVE, 1, 0);
 
-    await vaultETH.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
-    await vaultETH.grantRole(LEVERAGE_ROLE, leverageBoosterETH.address);
+    await vault.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
+    await vault.grantRole(LEVERAGE_ROLE, leverageBooster.address);
 
     console.log('Starting with 10 WeETH');
-    await weEth.approve(leverageBoosterETH.address, initialCollateral);
-    await leverageBoosterETH.leveragePosition(initialCollateral, 5000, 3);
+    await weEth.approve(leverageBooster.address, initialCollateral);
+    await leverageBooster.leveragePosition(initialCollateral, 5000, 3);
 
     console.log('Final Position Information---');
-    const position = await vaultETH.positions(owner.address);
+    const position = await vault.positions(owner.address);
     console.log(position.collateral.toString());
     console.log(position.debtPortion.toString());
     console.log(position.debtPrincipal.toString());
 
     console.log('Leverage Booster Balance---');
-    const boosterCollBal = await weEth.balanceOf(leverageBoosterETH.address);
-    const boosterUSDCBal = await weth.balanceOf(leverageBoosterETH.address);
-    const boosterTriBal = await triETH.balanceOf(leverageBoosterETH.address);
+    const boosterCollBal = await weEth.balanceOf(leverageBooster.address);
+    const boosterUSDCBal = await weth.balanceOf(leverageBooster.address);
+    const boosterTriBal = await triETH.balanceOf(leverageBooster.address);
 
     console.log(boosterCollBal.toString());
     console.log(boosterUSDCBal.toString());
@@ -373,7 +371,213 @@ describe('Leverage Booster', () => {
     console.log('Final User TriUSD Bal:', formatEther(triUsdBal));
 
     console.log('Final Position Information of Leverage Booster---');
-    const levPosition = await vaultETH.positions(leverageBoosterETH.address);
+    const levPosition = await vault.positions(leverageBooster.address);
+    console.log(levPosition.collateral.toString());
+    console.log(levPosition.debtPortion.toString());
+    console.log(levPosition.debtPrincipal.toString());
+  });
+
+  it('should be able to leverage position on triETH-wstETH vault', async () => {
+    const WstETH_WETH_UNI_V3 = '0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa';
+    const WstETH = '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0';
+    const WstETH_Whale = '0x3c22ec75ea5D745c78fc84762F7F1E6D82a2c5BF';
+
+    const whale = await unlockAccount(WstETH_Whale);
+    const wstEth = await ethers.getContractAt('IERC20', WstETH);
+    await wstEth.connect(whale).transfer(owner.address, parseEther('1000'));
+
+    const providerFactory = await ethers.getContractFactory(
+      'MockERC20ValueProviderETH'
+    );
+    const provider = <MockERC20ValueProviderETH>await upgrades.deployProxy(
+      providerFactory,
+      [
+        chainlinkUSDTAggregator,
+        WstETH,
+        {
+          numerator: BigNumber.from(700),
+          denominator,
+        },
+        {
+          numerator: BigNumber.from(900),
+          denominator,
+        },
+      ]
+    );
+    const vaultFactory = await ethers.getContractFactory('ERC20VaultETH');
+    const vault = <ERC20VaultETH>await upgrades.deployProxy(vaultFactory, [
+      triETH.address,
+      WstETH,
+      constants.AddressZero,
+      provider.address,
+      {
+        debtInterestApr: {
+          numerator,
+          denominator,
+        },
+        organizationFeeRate: {
+          numerator,
+          denominator,
+        },
+        borrowAmountCap,
+        minBorrowAmount,
+      },
+    ]);
+    await triETH.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
+
+    const swapRouterFactory = await ethers.getContractFactory('SwapRouter');
+    swapRouter = <SwapRouter>await upgrades.deployProxy(swapRouterFactory);
+
+    const leverageBoosterFactory = await ethers.getContractFactory(
+      'LeverageBooster'
+    );
+    leverageBooster = <LeverageBooster>(
+      await upgrades.deployProxy(leverageBoosterFactory, [
+        'TriETH-WstETH Leverage Booster',
+        1,
+        vault.address,
+        swapRouter.address,
+      ])
+    );
+    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.setTriRoute(
+      triETH.address,
+      WETH,
+      TriETH_WETH_Curve,
+      1 // Dex.CURVE
+    );
+    await leverageBooster.setRoute(WETH, WstETH, WstETH_WETH_UNI_V3, 3, 100);
+
+    await vault.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
+    await vault.grantRole(LEVERAGE_ROLE, leverageBooster.address);
+
+    console.log('Starting with 10 WstETH');
+    await wstEth.approve(leverageBooster.address, initialCollateral);
+    await leverageBooster.leveragePosition(initialCollateral, 5000, 3);
+
+    console.log('Final Position Information---');
+    const position = await vault.positions(owner.address);
+    console.log(position.collateral.toString());
+    console.log(position.debtPortion.toString());
+    console.log(position.debtPrincipal.toString());
+
+    console.log('Leverage Booster Balance---');
+    const boosterCollBal = await wstEth.balanceOf(leverageBooster.address);
+    const boosterUSDCBal = await weth.balanceOf(leverageBooster.address);
+    const boosterTriBal = await triETH.balanceOf(leverageBooster.address);
+
+    console.log(boosterCollBal.toString());
+    console.log(boosterUSDCBal.toString());
+    console.log(boosterTriBal.toString());
+
+    const triUsdBal = await triETH.balanceOf(owner.address);
+    console.log('Final User TriUSD Bal:', formatEther(triUsdBal));
+
+    console.log('Final Position Information of Leverage Booster---');
+    const levPosition = await vault.positions(leverageBooster.address);
+    console.log(levPosition.collateral.toString());
+    console.log(levPosition.debtPortion.toString());
+    console.log(levPosition.debtPrincipal.toString());
+  });
+  it('should be able to leverage position on triUSD-wstETH vault', async () => {
+    const WstETH_WETH_UNI_V3 = '0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa';
+    const WstETH = '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0';
+    const WstETH_Whale = '0x3c22ec75ea5D745c78fc84762F7F1E6D82a2c5BF';
+
+    const whale = await unlockAccount(WstETH_Whale);
+    const wstEth = await ethers.getContractAt('IERC20', WstETH);
+    await wstEth.connect(whale).transfer(owner.address, parseEther('1000'));
+
+    const providerFactory = await ethers.getContractFactory(
+      'MockERC20ValueProvider'
+    );
+    const provider = <MockERC20ValueProvider>await upgrades.deployProxy(
+      providerFactory,
+      [
+        chainlinkWETHAggregator,
+        WstETH,
+        {
+          numerator: BigNumber.from(700),
+          denominator,
+        },
+        {
+          numerator: BigNumber.from(900),
+          denominator,
+        },
+      ]
+    );
+    const vaultFactory = await ethers.getContractFactory('ERC20Vault');
+    const vault = <ERC20Vault>await upgrades.deployProxy(vaultFactory, [
+      triUSD.address,
+      WstETH,
+      constants.AddressZero,
+      provider.address,
+      {
+        debtInterestApr: {
+          numerator,
+          denominator,
+        },
+        organizationFeeRate: {
+          numerator,
+          denominator,
+        },
+        borrowAmountCap,
+        minBorrowAmount,
+      },
+    ]);
+    await triUSD.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
+
+    const swapRouterFactory = await ethers.getContractFactory('SwapRouter');
+    swapRouter = <SwapRouter>await upgrades.deployProxy(swapRouterFactory);
+
+    const leverageBoosterFactory = await ethers.getContractFactory(
+      'LeverageBooster'
+    );
+    leverageBooster = <LeverageBooster>(
+      await upgrades.deployProxy(leverageBoosterFactory, [
+        'TriUSD-WstETH Leverage Booster',
+        0,
+        vault.address,
+        swapRouter.address,
+      ])
+    );
+    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.setTriRoute(
+      triUSD.address,
+      USDC,
+      TriUSD_USDC_Curve,
+      1 // Dex.CURVE
+    );
+    await leverageBooster.setRoute(USDC, WETH, USDC_WETH_UNI_V3, 3, 500);
+    await leverageBooster.setRoute(WETH, WstETH, WstETH_WETH_UNI_V3, 3, 100);
+
+    await vault.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
+    await vault.grantRole(LEVERAGE_ROLE, leverageBooster.address);
+
+    console.log('Starting with 10 WstETH');
+    await wstEth.approve(leverageBooster.address, initialCollateral);
+    await leverageBooster.leveragePosition(initialCollateral, 5000, 3);
+
+    console.log('Final Position Information---');
+    const position = await vault.positions(owner.address);
+    console.log(position.collateral.toString());
+    console.log(position.debtPortion.toString());
+    console.log(position.debtPrincipal.toString());
+
+    console.log('Leverage Booster Balance---');
+    const boosterCollBal = await wstEth.balanceOf(leverageBooster.address);
+    const boosterUSDCBal = await weth.balanceOf(leverageBooster.address);
+    const boosterTriBal = await triUSD.balanceOf(leverageBooster.address);
+
+    console.log(boosterCollBal.toString());
+    console.log(boosterUSDCBal.toString());
+    console.log(boosterTriBal.toString());
+
+    const triUsdBal = await triUSD.balanceOf(owner.address);
+    console.log('Final User TriUSD Bal:', formatEther(triUsdBal));
+
+    console.log('Final Position Information of Leverage Booster---');
+    const levPosition = await vault.positions(leverageBooster.address);
     console.log(levPosition.collateral.toString());
     console.log(levPosition.debtPortion.toString());
     console.log(levPosition.debtPrincipal.toString());

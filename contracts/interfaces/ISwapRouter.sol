@@ -14,6 +14,7 @@ interface ISwapRouter {
         address toToken;
         address pool;
         Dex dex;
+        uint fee;
     }
 
     function swap(
