@@ -78,8 +78,26 @@ contract SwapRouter is ISwapRouter, AccessControlUpgradeable {
     ) internal returns (uint toOutput) {
         IERC20Upgradeable(fromToken).approve(pool, fromAmount);
 
-        /// @dev Tri stablecoins are all 0 index on TriUSD and TriETH curve pools.
-        toOutput = ICurveStableSwapNG(pool).exchange(0, 1, fromAmount, 0);
+        uint fromIndex = fromToken == ICurveStableSwapNG(pool).coins(0) ? 0 : 1;
+        uint toIndex = fromIndex == 0 ? 1 : 0;
+
+        try
+            ICurveStableSwapNG(pool).exchange(
+                int128(uint128(fromIndex)),
+                int128(uint128(toIndex)),
+                fromAmount,
+                0
+            )
+        returns (uint output) {
+            toOutput = output;
+        } catch {
+            toOutput = ICurveStableSwapNG(pool).exchange(
+                fromIndex,
+                toIndex,
+                fromAmount,
+                0
+            );
+        }
     }
 
     function _swapStableOnUniswapV2(

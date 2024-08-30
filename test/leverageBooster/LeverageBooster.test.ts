@@ -794,4 +794,111 @@ describe('Leverage Booster', () => {
     console.log(levPosition.debtPortion.toString());
     console.log(levPosition.debtPrincipal.toString());
   });
+
+  it('should be able to leverage position on triETH-ynETH vault', async () => {
+    const WstETH_WETH_UNI_V3 = '0x109830a1AAaD605BbF02a9dFA7B0B92EC2FB7dAa';
+    const WstETH_ynETH_CURVE = '0x19B8524665aBAC613D82eCE5D8347BA44C714bDd';
+    const WstETH = '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0';
+    const ynETH = '0x09db87A538BD693E9d08544577d5cCfAA6373A48';
+    const ynETH_Whale = '0xB9779AeC32f4cbF376F325d8c393B0D2711874eD';
+
+    const whale = await unlockAccount(ynETH_Whale);
+    const yneth = await ethers.getContractAt('IERC20', ynETH);
+    await yneth.connect(whale).transfer(owner.address, parseEther('100'));
+
+    const providerFactory = await ethers.getContractFactory(
+      'MockERC20ValueProviderETH'
+    );
+    const provider = <MockERC20ValueProviderETH>await upgrades.deployProxy(
+      providerFactory,
+      [
+        chainlinkUSDTAggregator,
+        ynETH,
+        {
+          numerator: BigNumber.from(700),
+          denominator,
+        },
+        {
+          numerator: BigNumber.from(900),
+          denominator,
+        },
+      ]
+    );
+
+    const vaultFactory = await ethers.getContractFactory('ERC20VaultETH');
+    const vault = <ERC20VaultETH>await upgrades.deployProxy(vaultFactory, [
+      triETH.address,
+      ynETH,
+      constants.AddressZero,
+      provider.address,
+      {
+        debtInterestApr: {
+          numerator,
+          denominator,
+        },
+        organizationFeeRate: {
+          numerator,
+          denominator,
+        },
+        borrowAmountCap,
+        minBorrowAmount,
+      },
+    ]);
+    await triETH.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
+
+    const swapRouterFactory = await ethers.getContractFactory('SwapRouter');
+    swapRouter = <SwapRouter>await upgrades.deployProxy(swapRouterFactory);
+
+    const leverageBoosterFactory = await ethers.getContractFactory(
+      'LeverageBooster'
+    );
+    leverageBooster = <LeverageBooster>(
+      await upgrades.deployProxy(leverageBoosterFactory, [
+        'TriETH-ynETH Leverage Booster',
+        1,
+        vault.address,
+        swapRouter.address,
+      ])
+    );
+    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.setTriRoute(
+      triETH.address,
+      WETH,
+      TriETH_WETH_Curve,
+      1 // Dex.CURVE
+    );
+    await leverageBooster.setRoute(WETH, WstETH, WstETH_WETH_UNI_V3, 3, 100);
+    await leverageBooster.setRoute(WstETH, ynETH, WstETH_ynETH_CURVE, 1, 0);
+
+    await vault.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
+    await vault.grantRole(LEVERAGE_ROLE, leverageBooster.address);
+
+    console.log('Starting with 20 ynETH');
+    await yneth.approve(leverageBooster.address, initialCollateral);
+    await leverageBooster.leveragePosition(initialCollateral, 5000, 3);
+
+    console.log('Final Position Information---');
+    const position = await vault.positions(owner.address);
+    console.log(position.collateral.toString());
+    console.log(position.debtPortion.toString());
+    console.log(position.debtPrincipal.toString());
+
+    console.log('Leverage Booster Balance---');
+    const boosterCollBal = await yneth.balanceOf(leverageBooster.address);
+    const boosterUSDCBal = await weth.balanceOf(leverageBooster.address);
+    const boosterTriBal = await triETH.balanceOf(leverageBooster.address);
+
+    console.log(boosterCollBal.toString());
+    console.log(boosterUSDCBal.toString());
+    console.log(boosterTriBal.toString());
+
+    const triUsdBal = await triETH.balanceOf(owner.address);
+    console.log('Final User TriUSD Bal:', formatEther(triUsdBal));
+
+    console.log('Final Position Information of Leverage Booster---');
+    const levPosition = await vault.positions(leverageBooster.address);
+    console.log(levPosition.collateral.toString());
+    console.log(levPosition.debtPortion.toString());
+    console.log(levPosition.debtPrincipal.toString());
+  });
 });
