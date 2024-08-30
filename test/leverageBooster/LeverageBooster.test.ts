@@ -688,4 +688,110 @@ describe('Leverage Booster', () => {
     console.log(levPosition.debtPortion.toString());
     console.log(levPosition.debtPrincipal.toString());
   });
+
+  it('should be able to leverage position on triUSD-sFrax vault', async () => {
+    const sFrax_crvUSD_CURVE = '0x73a0cba58c19ed5f27c6590bd792ec38de4815ea';
+    const crvUSD_USDC_CURVE = '0x4dece678ceceb27446b35c672dc7d61f30bad69e';
+    const sFrax = '0xA663B02CF0a4b149d2aD41910CB81e23e1c41c32';
+    const crvUSD = '0xf939E0A03FB07F59A73314E73794Be0E57ac1b4E';
+    const sFrax_Whale = '0x4C569Fcdd8b9312B8010Ab2c6D865c63C4De5609';
+
+    const whale = await unlockAccount(sFrax_Whale);
+    const sfrax = await ethers.getContractAt('IERC20', sFrax);
+    await sfrax.connect(whale).transfer(owner.address, parseEther('1000'));
+
+    const providerFactory = await ethers.getContractFactory(
+      'MockERC20ValueProvider'
+    );
+    const provider = <MockERC20ValueProvider>await upgrades.deployProxy(
+      providerFactory,
+      [
+        chainlinkUSDTAggregator,
+        sFrax,
+        {
+          numerator: BigNumber.from(700),
+          denominator,
+        },
+        {
+          numerator: BigNumber.from(900),
+          denominator,
+        },
+      ]
+    );
+    const vaultFactory = await ethers.getContractFactory('ERC20Vault');
+    const vault = <ERC20Vault>await upgrades.deployProxy(vaultFactory, [
+      triUSD.address,
+      sFrax,
+      constants.AddressZero,
+      provider.address,
+      {
+        debtInterestApr: {
+          numerator,
+          denominator,
+        },
+        organizationFeeRate: {
+          numerator,
+          denominator,
+        },
+        borrowAmountCap,
+        minBorrowAmount,
+      },
+    ]);
+    await triUSD.connect(daoAdmin).grantRole(MINTER_ROLE, vault.address);
+
+    const swapRouterFactory = await ethers.getContractFactory('SwapRouter');
+    swapRouter = <SwapRouter>await upgrades.deployProxy(swapRouterFactory);
+
+    const leverageBoosterFactory = await ethers.getContractFactory(
+      'LeverageBooster'
+    );
+    leverageBooster = <LeverageBooster>(
+      await upgrades.deployProxy(leverageBoosterFactory, [
+        'TriUSD-sUSDe Leverage Booster',
+        0,
+        vault.address,
+        swapRouter.address,
+      ])
+    );
+    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.setTriRoute(
+      triUSD.address,
+      USDC,
+      TriUSD_USDC_Curve,
+      1 // Dex.CURVE
+    );
+    await leverageBooster.setRoute(USDC, crvUSD, crvUSD_USDC_CURVE, 1, 0);
+    await leverageBooster.setRoute(crvUSD, sFrax, sFrax_crvUSD_CURVE, 1, 0);
+
+    await vault.setRoleAdmin(LEVERAGE_ROLE, DAO_ROLE);
+    await vault.grantRole(LEVERAGE_ROLE, leverageBooster.address);
+
+    console.log('Starting with 20 sFrax');
+    await sfrax.approve(leverageBooster.address, initialCollateral);
+    await leverageBooster.leveragePosition(initialCollateral, 5000, 3);
+
+    console.log('Final Position Information---');
+    const position = await vault.positions(owner.address);
+    console.log(position.collateral.toString());
+    console.log(position.debtPortion.toString());
+    console.log(position.debtPrincipal.toString());
+
+    console.log('Leverage Booster Balance---');
+    const boosterCollBal = await sfrax.balanceOf(leverageBooster.address);
+    const boosterUSDCBal = await weth.balanceOf(leverageBooster.address);
+    const boosterTriBal = await triUSD.balanceOf(leverageBooster.address);
+
+    console.log(boosterCollBal.toString());
+    console.log(boosterUSDCBal.toString());
+    console.log(boosterTriBal.toString());
+
+    const triUsdBal = await triUSD.balanceOf(owner.address);
+    console.log('Final User TriUSD Bal:', formatEther(triUsdBal));
+
+    console.log('Final Position Information of Leverage Booster---');
+    const levPosition = await vault.positions(leverageBooster.address);
+    console.log(levPosition.collateral.toString());
+    console.log(levPosition.debtPortion.toString());
+    console.log(levPosition.debtPrincipal.toString());
+  });
 });
