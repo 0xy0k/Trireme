@@ -7,6 +7,8 @@ import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 import 'contracts/interfaces/IVault.sol';
 import 'contracts/interfaces/IValueProvider.sol';
+import 'contracts/interfaces/IValueProviderETH.sol';
+import 'contracts/interfaces/IValueProviderBTC.sol';
 import 'contracts/interfaces/ISwapRouter.sol';
 
 contract LeverageBooster is
@@ -15,14 +17,21 @@ contract LeverageBooster is
 {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
+    enum StablecoinType {
+        TriremeUSD,
+        TriremeETH,
+        TriremeBTC
+    }
+
     bytes32 internal constant DAO_ROLE = keccak256('DAO_ROLE');
     bytes32 internal constant ROUTE_ROLE = keccak256('ROUTE_ROLE');
 
     string public description;
     IVault public vault;
     IERC20Upgradeable public collateralToken;
+    StablecoinType public stablecoinType;
     IERC20Upgradeable public stablecoin;
-    IValueProvider public valueProvider;
+    address public valueProvider;
     ISwapRouter public swapRouter;
 
     ISwapRouter.SwapRoute public triRoute;
@@ -33,6 +42,7 @@ contract LeverageBooster is
 
     function initialize(
         string memory _description,
+        StablecoinType _vaultType,
         address _vault,
         address _swapRouter
     ) external initializer {
@@ -45,7 +55,8 @@ contract LeverageBooster is
 
         description = _description;
         vault = IVault(_vault);
-        valueProvider = IValueProvider(vault.valueProvider());
+        stablecoinType = _vaultType;
+        valueProvider = vault.valueProvider();
         collateralToken = IERC20Upgradeable(vault.tokenContract());
         stablecoin = IERC20Upgradeable(vault.stablecoin());
         swapRouter = ISwapRouter(_swapRouter);
@@ -68,7 +79,8 @@ contract LeverageBooster is
             fromToken: from,
             toToken: to,
             pool: pool,
-            dex: dex
+            dex: dex,
+            fee: 0
         });
     }
 
@@ -76,7 +88,8 @@ contract LeverageBooster is
         address from,
         address to,
         address pool,
-        ISwapRouter.Dex dex
+        ISwapRouter.Dex dex,
+        uint fee
     ) external onlyRole(ROUTE_ROLE) {
         if (
             from == address(0) ||
@@ -89,7 +102,8 @@ contract LeverageBooster is
             fromToken: from,
             toToken: to,
             pool: pool,
-            dex: dex
+            dex: dex,
+            fee: fee
         });
     }
 
@@ -139,7 +153,18 @@ contract LeverageBooster is
         vault.addCollateralFor(collAmount, account);
 
         uint beforeStableBal = stablecoin.balanceOf(address(this));
-        uint collValue = valueProvider.getPriceUSD(collAmount);
+        uint collValue;
+        if (stablecoinType == StablecoinType.TriremeUSD) {
+            collValue = IValueProvider(valueProvider).getPriceUSD(collAmount);
+        } else if (stablecoinType == StablecoinType.TriremeETH) {
+            collValue = IValueProviderETH(valueProvider).getPriceETH(
+                collAmount
+            );
+        } else if (stablecoinType == StablecoinType.TriremeBTC) {
+            collValue = IValueProviderBTC(valueProvider).getPriceBTC(
+                collAmount
+            );
+        }
         borrowAmount = (collValue * borrowRatio) / 10000;
         vault.borrowFor(borrowAmount, account);
         uint afterStableBal = stablecoin.balanceOf(address(this));

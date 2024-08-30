@@ -10,4 +10,11 @@ interface ICurveStableSwapNG {
         uint _dx,
         uint _min_dy
     ) external returns (uint);
+
+    function exchange(
+        uint i,
+        uint j,
+        uint _dx,
+        uint _min_dy
+    ) external returns (uint);
 }

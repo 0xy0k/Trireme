@@ -47,10 +47,16 @@ contract SwapRouter is ISwapRouter, AccessControlUpgradeable {
             );
         } else if (route.dex == Dex.UNISWAP_V2) {
             toOutput = _swapStableOnUniswapV2(
-                route.pool,
                 route.fromToken,
                 route.toToken,
                 fromAmount
+            );
+        } else if (route.dex == Dex.UNISWAP_V3) {
+            toOutput = _swapStableOnUniswapV3(
+                route.fromToken,
+                route.toToken,
+                fromAmount,
+                route.fee
             );
         } else {
             revert No_Routes(route.fromToken, route.toToken);
@@ -72,12 +78,29 @@ contract SwapRouter is ISwapRouter, AccessControlUpgradeable {
     ) internal returns (uint toOutput) {
         IERC20Upgradeable(fromToken).approve(pool, fromAmount);
 
-        /// @dev Tri stablecoins are all 0 index on TriUSD and TriETH curve pools.
-        toOutput = ICurveStableSwapNG(pool).exchange(0, 1, fromAmount, 0);
+        uint fromIndex = fromToken == ICurveStableSwapNG(pool).coins(0) ? 0 : 1;
+        uint toIndex = fromIndex == 0 ? 1 : 0;
+
+        try
+            ICurveStableSwapNG(pool).exchange(
+                int128(uint128(fromIndex)),
+                int128(uint128(toIndex)),
+                fromAmount,
+                0
+            )
+        returns (uint output) {
+            toOutput = output;
+        } catch {
+            toOutput = ICurveStableSwapNG(pool).exchange(
+                fromIndex,
+                toIndex,
+                fromAmount,
+                0
+            );
+        }
     }
 
     function _swapStableOnUniswapV2(
-        address,
         address fromToken,
         address toToken,
         uint fromAmount
@@ -96,6 +119,30 @@ contract SwapRouter is ISwapRouter, AccessControlUpgradeable {
             address(this),
             block.timestamp
         );
+        uint afterToBal = IERC20Upgradeable(toToken).balanceOf(address(this));
+
+        toOutput = afterToBal - beforeToBal;
+    }
+
+    function _swapStableOnUniswapV3(
+        address fromToken,
+        address toToken,
+        uint fromAmount,
+        uint fee
+    ) internal returns (uint toOutput) {
+        IERC20Upgradeable(fromToken).approve(address(uniV3Router), fromAmount);
+
+        uint beforeToBal = IERC20Upgradeable(toToken).balanceOf(address(this));
+        IUniswapV3Router.ExactInputSingleParams memory params;
+        params.tokenIn = fromToken;
+        params.tokenOut = toToken;
+        params.fee = uint24(fee);
+        params.recipient = address(this);
+        params.deadline = block.timestamp;
+        params.amountIn = fromAmount;
+        params.amountOutMinimum = 1;
+        params.sqrtPriceLimitX96 = 0;
+        uniV3Router.exactInputSingle(params);
         uint afterToBal = IERC20Upgradeable(toToken).balanceOf(address(this));
 
         toOutput = afterToBal - beforeToBal;
