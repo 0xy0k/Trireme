@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { ethers } from 'hardhat';
+import { ethers, upgrades } from 'hardhat';
 import { BigNumber, Contract } from 'ethers';
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/dist/src/signers';
 import W3_UniswapV2Factory from '@uniswap/v2-core/build/UniswapV2Factory.json';
@@ -127,12 +127,9 @@ describe('Guardian', function () {
 
     /// Guardian
     const Guardian = await ethers.getContractFactory('Guardian');
-    guardian = (await Guardian.deploy(
-      trireme.address,
-      usdc.address,
-      uniswapv2Router.address,
-      treasury.address
-    )) as Guardian;
+    guardian = <Guardian>(
+      await upgrades.deployProxy(Guardian, [treasury.address])
+    );
 
     await trireme.setGuardianFeeReceiver(guardian.address);
     await trireme.grantRole(await trireme.MINTER_ROLE(), guardian.address);

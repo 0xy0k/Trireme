@@ -1,25 +1,20 @@
 import '@typechain/hardhat';
 import '@nomiclabs/hardhat-ethers';
 import '@nomiclabs/hardhat-waffle';
-import '@nomiclabs/hardhat-etherscan';
+import '@nomicfoundation/hardhat-verify';
 import '@nomiclabs/hardhat-truffle5';
+import '@openzeppelin/hardhat-upgrades';
 import 'hardhat-contract-sizer';
 import 'solidity-coverage';
 import 'hardhat-deploy';
+import { HardhatUserConfig } from 'hardhat/config';
 
 require('dotenv').config();
 
 const mainnetURL = process.env.MAIN_NET_API_URL;
-const goerliURL = process.env.GOERLI_NET_API_URL;
+const sepoliaURL = process.env.SEPOLIA_NET_API_URL;
 
-const mnemonic = process.env.MNEMONIC;
-
-const addressOffset = 0;
-const numAddressesGenerated = 5;
-const mnemonicPathMainNet = "m/44'/60'/0'/0/";
-const mnemonicPathTestNet = "m/44'/1'/0'/0/";
-
-export default {
+const config: HardhatUserConfig = {
   solidity: {
     compilers: [
       {
@@ -30,7 +25,6 @@ export default {
             runs: 200,
           },
         },
-        docker: true,
       },
     ],
   },
@@ -51,32 +45,17 @@ export default {
   networks: {
     hardhat: {
       forking: {
-        url: process.env.MAIN_NET_API_URL,
+        url: process.env.MAIN_NET_API_URL!,
+        blockNumber: 20638400,
       },
-      hardfork: 'london',
-      gasPrice: 'auto',
-    },
-    localhost: {
-      url: 'http://127.0.0.1:8545',
-      gas: 6012388,
     },
     mainnet: {
       url: mainnetURL,
-      accounts: {
-        mnemonic,
-        path: mnemonicPathMainNet,
-        initialIndex: addressOffset,
-        count: numAddressesGenerated,
-      },
+      accounts: [process.env.PRIVATE_KEY!],
     },
-    goerli: {
-      url: goerliURL,
-      accounts: {
-        mnemonic,
-        path: mnemonicPathTestNet,
-        initialIndex: addressOffset,
-        count: numAddressesGenerated,
-      },
+    sepolia: {
+      url: sepoliaURL,
+      accounts: [process.env.PRIVATE_KEY!],
     },
   },
   paths: {
@@ -87,4 +66,9 @@ export default {
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
   },
+  sourcify: {
+    enabled: true,
+  },
 };
+
+export default config;

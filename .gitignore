@@ -18,3 +18,6 @@ playground.ts
 /addresses.csv
 /uniswapv2factory_address.csv
 /.DS_Store
+
+/coverage
+coverage.json
