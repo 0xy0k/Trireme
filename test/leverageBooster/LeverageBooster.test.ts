@@ -44,7 +44,7 @@ describe('Leverage Booster', () => {
   const DAO_ADMIN = '0xA004e4ceDea8497d6f028463e6756a5e6296bAd3';
   const DAO_ROLE =
     '0x3b5d4cc60d3ec3516ee8ae083bd60934f6eb2a6c54b1229985c41bfb092b2603';
-  const ROUTER_ROLE =
+  const ROUTE_ROLE =
     '0x0eed1df25dbd42631c64048750ee136532bf7501dc9b377fe56e8b9a41af3eaf';
   const MINTER_ROLE =
     '0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6';
@@ -145,7 +145,7 @@ describe('Leverage Booster', () => {
         swapRouter.address,
       ])
     );
-    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.grantRole(ROUTE_ROLE, owner.address);
     await leverageBooster.setTriRoute(
       triUSD.address,
       USDC,
@@ -240,7 +240,7 @@ describe('Leverage Booster', () => {
         swapRouter.address,
       ])
     );
-    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.grantRole(ROUTE_ROLE, owner.address);
     await leverageBooster.setTriRoute(
       triUSD.address,
       USDC,
@@ -336,7 +336,7 @@ describe('Leverage Booster', () => {
         swapRouter.address,
       ])
     );
-    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.grantRole(ROUTE_ROLE, owner.address);
     await leverageBooster.setTriRoute(
       triETH.address,
       WETH,
@@ -439,7 +439,7 @@ describe('Leverage Booster', () => {
         swapRouter.address,
       ])
     );
-    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.grantRole(ROUTE_ROLE, owner.address);
     await leverageBooster.setTriRoute(
       triETH.address,
       WETH,
@@ -541,7 +541,7 @@ describe('Leverage Booster', () => {
         swapRouter.address,
       ])
     );
-    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.grantRole(ROUTE_ROLE, owner.address);
     await leverageBooster.setTriRoute(
       triUSD.address,
       USDC,
@@ -647,7 +647,7 @@ describe('Leverage Booster', () => {
         swapRouter.address,
       ])
     );
-    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.grantRole(ROUTE_ROLE, owner.address);
     await leverageBooster.setTriRoute(
       triUSD.address,
       USDC,
@@ -753,7 +753,7 @@ describe('Leverage Booster', () => {
         swapRouter.address,
       ])
     );
-    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.grantRole(ROUTE_ROLE, owner.address);
     await leverageBooster.setTriRoute(
       triUSD.address,
       USDC,
@@ -860,7 +860,7 @@ describe('Leverage Booster', () => {
         swapRouter.address,
       ])
     );
-    await leverageBooster.grantRole(ROUTER_ROLE, owner.address);
+    await leverageBooster.grantRole(ROUTE_ROLE, owner.address);
     await leverageBooster.setTriRoute(
       triETH.address,
       WETH,
