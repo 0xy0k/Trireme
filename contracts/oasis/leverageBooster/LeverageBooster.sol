@@ -62,6 +62,13 @@ contract LeverageBooster is
         swapRouter = ISwapRouter(_swapRouter);
     }
 
+    function setRoleAdmin(
+        bytes32 role,
+        bytes32 adminRole
+    ) external nonReentrant onlyRole(DAO_ROLE) {
+        _setRoleAdmin(role, adminRole);
+    }
+
     function setTriRoute(
         address from,
         address to,

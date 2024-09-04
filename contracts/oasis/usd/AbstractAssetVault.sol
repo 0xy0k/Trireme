@@ -245,7 +245,7 @@ abstract contract AbstractAssetVault is
     function borrowFor(
         uint256 _amount,
         address _onBehalfOf
-    ) external nonReentrant {
+    ) external nonReentrant onlyRole(LEVERAGE_ROLE) {
         accrue();
         _borrow(msg.sender, _onBehalfOf, _amount);
     }
