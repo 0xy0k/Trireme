@@ -8,7 +8,6 @@ import '@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeab
 
 import '../../interfaces/IStableCoin.sol';
 import '../../utils/RateLib.sol';
-import {ERC20ValueProvider} from './ERC20ValueProvider.sol';
 
 /// @title ERC20 / ERC1155 lending vault
 /// @notice This contracts allows users to borrow TriremeUSD using ERC20/ERC1155 tokens as collateral.
