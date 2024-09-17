@@ -14,7 +14,6 @@ artifacts
 
 # playground
 playground.ts
-/deployments
 /addresses.csv
 /uniswapv2factory_address.csv
 /.DS_Store
